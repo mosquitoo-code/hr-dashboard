@@ -1105,7 +1105,7 @@ function getYearStr() {
   return v ? v.substring(0,4) : new Date().getFullYear().toString();
 }
 function groupCount(arr, key) {
-  return arr.reduce((acc, item) => { const k = item[key]||"미분류"; acc[k]=(acc[k]||0)+1; return acc; }, {});
+  return arr.reduce((acc, item) => { const k = item[key]||"정규직/계약직"; acc[k]=(acc[k]||0)+1; return acc; }, {});
 }
 function renderBars(elId, obj, baseColor) {
   const el = document.getElementById(elId);
