@@ -1017,7 +1017,7 @@ function renderDisabledLaw() {
   document.getElementById("dl-metrics").innerHTML = `
     <div class="metric"><div class="metric-label">${cache.year}년 아정 연평균 상시근로자</div><div class="metric-val">${cache.avgBase}<span>명</span></div><div class="metric-sub">타 법인 소속 제외</div></div>
     <div class="metric"><div class="metric-label">연간 최종 의무고용인원</div><div class="metric-val" style="color:var(--warning);">${cache.avgMandatory}<span>명</span></div><div class="metric-sub">연평균 상시근로자의 3.1%, 소수점 이하 절사</div></div>
-    <div class="metric"><div class="metric-label">아정 연평균 고용인원(현재)</div><div class="metric-val" style="color:var(--accent);">${cache.avgScore}<span>명</span></div><div class="metric-sub">중증 60h↑ 2명, 미만 1명</div></div>
+    <div class="metric"><div class="metric-label">아정 연평균 고용인원(현재)</div><div class="metric-val" style="color:var(--accent);">${cache.avgScore}<span>명</span></div><div class="metric-sub">월 60시간 이상 근무하는 중증장애인의 경우 2배수 적용</div></div>
     <div class="metric"><div class="metric-label">${cache.year}년 최종 준수 상태</div><div class="metric-val" style="font-size:14px;color:${fontColor};padding-top:6px;font-weight:600;">${summaryText}</div></div>
   `;
   document.getElementById("dl-monthly-tbody").innerHTML = cache.list.map(m => {
