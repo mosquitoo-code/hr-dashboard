@@ -255,6 +255,7 @@
 
     <div class="panel" id="panel-disabledLaw">
       <div class="metric-row" id="dl-metrics"></div>
+      
       <div class="card">
         <div class="card-title">아정네트웍스 월별 의무고용 산정 현황 <span class="card-sub">각 월말일자 시점 '아정네트웍스' 소속 재직 데이터 기준 역산 결과</span></div>
         <div class="tbl-wrap">
@@ -270,6 +271,28 @@
               </tr>
             </thead>
             <tbody id="dl-monthly-tbody"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-title">♿ 현재 장애인 근로자 상세 명단 <span class="card-sub" id="dl-emp-count-label"></span></div>
+        <div class="tbl-wrap">
+          <table>
+            <thead>
+              <tr style="background:var(--bg);">
+                <th>사원코드</th>
+                <th>이름</th>
+                <th>직군</th>
+                <th>담당업무</th>
+                <th style="text-align:center;">구분</th>
+                <th style="text-align:center;">월 평균 근로일수</th>
+                <th style="text-align:center;">월 평균 근로시간</th>
+                <th style="text-align:center; color:var(--accent);">인정 인원(중증 2배수 적용)</th>
+                <th>상태</th>
+              </tr>
+            </thead>
+            <tbody id="dl-emp-tbody"></tbody>
           </table>
         </div>
       </div>
@@ -711,7 +734,7 @@ function renderHeadcount() {
   const targetYearStr = getYearStr();
   const totalResignedCount = totalEmp.filter(e => e.status === "퇴사").length;
   const hiredThisYear = totalEmp.filter(e => e.joinDate && e.joinDate.substring(0,4) === targetYearStr).length;
-  const resignedThisYear = totalEmp.filter(e => e.status === "퇴사" && e.leaveDate && e.leaveDate.substring(0,4) === targetYearStr).length;
+  const resignedThisYear = totalEmp.filter(e => e.status === "퇴사" && e.leaveDate && totalEmp.filter(el => el.status === "퇴사" && el.leaveDate && el.leaveDate.substring(0,4) === targetYearStr)).length;
   const leaveCount = active.filter(e => e.statusLabel === "휴직").length;
 
   document.getElementById("hc-metrics").innerHTML = `
@@ -775,7 +798,6 @@ function renderCompare() {
     currEmpList = currEmpList.filter(e => e.corp === selectedCorp);
   }
 
-  // [오타 완벽 교정]: 오염되었던 status 분류값 비교 로직을 정교하게 복구 완료
   const pActive = prevEmpList.filter(e => e.status === "재직").length;
   const pHired  = prevEmpList.filter(e => e.joinDate && e.joinDate.substring(0, 7) === compareMonthStr).length;
   const pResigned = prevEmpList.filter(e => e.status === "퇴사" && e.leaveDate && e.leaveDate.substring(0, 7) === compareMonthStr).length;
@@ -1014,12 +1036,15 @@ function renderDisabledLaw() {
   const netShortfall = cache.avgMandatory - cache.avgScore;
   const summaryText = netShortfall > 0 ? `연평균 ${Math.round(netShortfall*10)/10}명 미달 (부담금 대상)` : "의무 기준 충족 완료";
   const fontColor = netShortfall > 0 ? "var(--danger)" : "var(--success)";
+  
   document.getElementById("dl-metrics").innerHTML = `
     <div class="metric"><div class="metric-label">${cache.year}년 아정 연평균 상시근로자</div><div class="metric-val">${cache.avgBase}<span>명</span></div><div class="metric-sub">타 법인 소속 제외</div></div>
-    <div class="metric"><div class="metric-label">연간 장애인 의무고용인원</div><div class="metric-val" style="color:var(--warning);">${cache.avgMandatory}<span>명</span></div><div class="metric-sub">연평균 상시근로자의 3.1%, 소수점 이하 절사</div></div>
-    <div class="metric"><div class="metric-label">실제 고용인원 평균(현재)</div><div class="metric-val" style="color:var(--accent);">${cache.avgScore}<span>명</span></div><div class="metric-sub">월 60시간 이상 근무하는 중증장애인의 경우 2배수 적용</div></div>
-    <div class="metric"><div class="metric-label">${cache.year}년 최종 준수 상태</div><div class="metric-val" style="font-size:14px;color:${fontColor};padding-top:6px;font-weight:600;">${summaryText}</div></div>
+    <div class="metric"><div class="metric-label">연간 최종 의무고용인원</div><div class="metric-val" style="color:var(--warning);">${cache.avgMandatory}<span>명</span></div><div class="metric-sub">연평균 상시근로자의 3.1%, 소수점 이하 절사</div></div>
+    <div class="metric"><div class="metric-label">아정 연평균 고용인원(현재)</div><div class="metric-val" style="color:var(--accent);">${cache.avgScore}<span>명</span></div><div class="metric-sub">중증장애인의 경우 2배수 적용(월 60시간 이상 근무 시)</div></div>
+    <div class="metric"><div class="metric-label">${cache.year}년 준수 상태</div><div class="metric-val" style="font-size:14px;color:${fontColor};padding-top:6px;font-weight:600;">${summaryText}</div></div>
   `;
+
+  // 하단 월별 산정 테이블 출력
   document.getElementById("dl-monthly-tbody").innerHTML = cache.list.map(m => {
     const diff = m.dlMandatory - m.dlCurrentScore;
     const isPass = diff <= 0;
@@ -1032,7 +1057,43 @@ function renderDisabledLaw() {
       <td><span class="badge ${isPass?'badge-active':'badge-resign'}">${isPass?'준수':`${diff}명 미달`}</span></td>
     </tr>`;
   }).join("");
-  document.getElementById("panel-sub").textContent = `${cache.year}년도 1월~12월 아정네트웍스 역산 레포트 구성 완료`;
+
+  // 장애인 근로자 상세 명단 추출
+  const currentDisEmps = simulatedData.employees.filter(e => 
+    e.corp === "아정네트웍스" && 
+    e.status === "재직" && 
+    e.disabledGrade !== "비장애"
+  );
+
+  document.getElementById("dl-emp-count-label").textContent = `현재 총 ${currentDisEmps.length}명 재직 중`;
+
+  document.getElementById("dl-emp-tbody").innerHTML = currentDisEmps.length
+    ? currentDisEmps.map(e => {
+        let scoreText = "0명 (조건미달)";
+        if (e.disabledGrade === "경증") {
+          if (e.workingDaysCount >= 16 && e.workingHours >= 60) scoreText = "1명";
+        } else if (e.disabledGrade === "중증") {
+          scoreText = e.workingHours >= 60 ? "2명" : "1명";
+        }
+
+        let badgeCls = e.disabledGrade === "중증" ? "badge-resign" : "badge-planned";
+
+        // 요구안 반영: Math.ceil() 함수를 사용하여 소수점 이하 무조건 올림(Roundup) 처리 진행
+        const ceilHours = Math.ceil(e.workingHours || 0);
+
+        return `<tr>
+          <td class="emp-id">${e.empCode || "-"}</td>
+          <td class="name-cell">${e.name || "-"}</td>
+          <td>${e.jobGroup || "-"}</td>
+          <td>${e.jobRaw || "-"}</td>
+          <td style="text-align:center;"><span class="badge ${badgeCls}">${e.disabledGrade}장애</span></td>
+          <td style="text-align:center;">${e.workingDaysCount}일</td>
+          <td style="text-align:center;">${ceilHours}시간</td>
+          <td style="text-align:center; font-weight:700; color:var(--accent);">${scoreText}</td>
+          <td><span class="badge badge-active">${e.statusLabel}</span></td>
+        </tr>`;
+      }).join("")
+    : `<tr><td colspan="9" style="text-align:center;color:var(--text-hint);padding:30px;">현재 아정네트웍스 소속으로 재직 중인 장애인 근로자 데이터가 없습니다.</td></tr>`;
 }
 
 // =============================================
@@ -1044,7 +1105,7 @@ function getYearStr() {
   return v ? v.substring(0,4) : new Date().getFullYear().toString();
 }
 function groupCount(arr, key) {
-  return arr.reduce((acc, item) => { const k = item[key]||"정규직/계약직"; acc[k]=(acc[k]||0)+1; return acc; }, {});
+  return arr.reduce((acc, item) => { const k = item[key]||"미분류"; acc[k]=(acc[k]||0)+1; return acc; }, {});
 }
 function renderBars(elId, obj, baseColor) {
   const el = document.getElementById(elId);
