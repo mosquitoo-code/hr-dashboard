@@ -85,6 +85,8 @@
   .bg-prev { background: #f3f4f6; color: #4b5563; border-left: 4px solid #9ca3af; }
   .bg-curr { background: var(--accent-light); color: var(--accent); border-left: 4px solid var(--accent); }
   .bg-gap  { background: #fffbeb; color: #d97706; border-left: 4px solid #f59e0b; }
+  
+  .compare-title-banner select { background: transparent; border: none; font-family: inherit; font-size: 12px; font-weight: 700; outline: none; cursor: pointer; color: #1f2937; padding: 2px 4px; border-bottom: 1.5px dashed #4b5563; }
 </style>
 </head>
 <body>
@@ -94,7 +96,7 @@
     <nav>
       <div class="nav-item active" onclick="showPanel('workforce')"><span class="nav-icon">📋</span> 인력현황</div>
       <div class="nav-item" onclick="showPanel('headcount')"><span class="nav-icon">📊</span> 상시근로자수</div>
-      <div class="nav-item" onclick="showPanel('compare')"><span class="nav-icon">⚖️</span> 상시근로자수(전월 대비)</div>
+      <div class="nav-item" onclick="showPanel('compare')"><span class="nav-icon">⚖️</span> 인원 증감 추이</div>
       <div class="nav-item" onclick="showPanel('hiring')"><span class="nav-icon">🙋</span> 채용현황</div>
       <div class="nav-item" onclick="showPanel('resign')"><span class="nav-icon">📤</span> 퇴사자현황</div>
       <div class="nav-item" onclick="showPanel('org')"><span class="nav-icon">🗂️</span> 부서/직군별</div>
@@ -110,9 +112,9 @@
         <div class="page-sub" id="panel-sub">로딩 중...</div>
       </div>
       <div class="header-controls">
-        <div class="target-date-box" id="compare-corp-box" style="display:none;">
+        <div class="target-date-box" id="global-corp-box" style="display:flex;">
           🏢 법인 필터:
-          <select id="compare-corp-select" onchange="renderCompare()"><option value="">전체 법인</option></select>
+          <select id="global-corp-select" onchange="onGlobalFilterChange()"><option value="">전체 법인</option></select>
         </div>
         <div class="target-date-box" id="header-date-box">
           📅 조회 기준일:
@@ -135,7 +137,6 @@
         <div class="card-title">전체 임직원 목록 <span class="card-sub" id="wf-count"></span></div>
         <div class="filter-row">
           <input type="text" id="wf-search" placeholder="이름 또는 사원코드 검색…" oninput="renderWorkforce()" />
-          <select id="wf-corp-filter" onchange="renderWorkforce()"><option value="">전체 법인</option></select>
           <select id="wf-status" onchange="renderWorkforce()">
             <option value="재직">재직중 (휴직포함)</option>
             <option value="">전체 목록</option>
@@ -174,7 +175,10 @@
     <div class="panel" id="panel-compare">
       <div class="three-col">
         <div>
-          <div class="compare-title-banner bg-prev" id="compare-prev-title">전월 현황</div>
+          <div class="compare-title-banner bg-prev">
+            <span>⬅️ 비교월 선택:</span> 
+            <select id="compare-month-select" onchange="renderCompare()"></select>
+          </div>
           <div id="compare-prev-metrics"></div>
         </div>
         <div>
@@ -182,7 +186,7 @@
           <div id="compare-curr-metrics"></div>
         </div>
         <div>
-          <div class="compare-title-banner bg-gap">📊 전월 대비 증감 분석 (Gap)</div>
+          <div class="compare-title-banner bg-gap">📊 선택 월 대비 증감 분석 (Gap)</div>
           <div id="compare-gap-metrics"></div>
         </div>
       </div>
@@ -200,7 +204,6 @@
             <option value="07">7월</option><option value="08">8월</option><option value="09">9월</option>
             <option value="10">10월</option><option value="11">11월</option><option value="12">12월</option>
           </select>
-          <select id="hi-corp-filter" onchange="renderHiring()"><option value="">전체 법인</option></select>
         </div>
         <div class="tbl-wrap">
           <table>
@@ -224,7 +227,9 @@
             <option value="07">7월</option><option value="08">8월</option><option value="09">9월</option>
             <option value="10">10월</option><option value="11">11월</option><option value="12">12월</option>
           </select>
-          <select id="re-corp-filter" onchange="renderResign()"><option value="">전체 법인</option></select>
+          <select id="re-reason-filter" onchange="renderResign()">
+            <option value="">전체 퇴사사유</option>
+          </select>
         </div>
         <div class="tbl-wrap">
           <table>
@@ -333,12 +338,18 @@ async function loadData() {
 
 function onTargetDateChange() {
   if (rawEmployees.length === 0) return;
+  buildCompareMonthOptions();
   processDataByTargetDate();
 }
 
 function onTargetYearChange() {
   if (rawEmployees.length === 0) return;
   processMonthlyData();
+}
+
+function onGlobalFilterChange() {
+  if (rawEmployees.length === 0) return;
+  showPanel(currentPanelId);
 }
 
 function processDataByTargetDate() {
@@ -389,6 +400,39 @@ function processMonthlyData() {
   const avgScore     = Math.round(monthlyReport.reduce((a,b)=>a+b.dlCurrentScore, 0) / monthCount * 10) / 10;
   monthlySimulatedCache = { year: selectedYear, list: monthlyReport, avgBase, avgMandatory, avgScore };
   if (currentPanelId === "disabledLaw") renderDisabledLaw();
+}
+
+function buildCompareMonthOptions() {
+  const targetStr = document.getElementById("target-date-input").value;
+  if (!targetStr) return;
+  
+  const currDate = new Date(targetStr);
+  const selectEl = document.getElementById("compare-month-select");
+  if (!selectEl) return;
+  const previousValue = selectEl.value; 
+  
+  selectEl.innerHTML = "";
+  
+  let defaultOptionValue = "";
+  for(let i = 1; i <= 24; i++) {
+    const d = new Date(currDate.getFullYear(), currDate.getMonth() - i, 1);
+    const yr = d.getFullYear();
+    const mo = String(d.getMonth() + 1).padStart(2, '0');
+    const valStr = `${yr}-${mo}`;
+    
+    const opt = document.createElement("option");
+    opt.value = valStr;
+    opt.textContent = `${yr}년 ${parseInt(mo)}월 말`;
+    selectEl.appendChild(opt);
+    
+    if(i === 1) defaultOptionValue = valStr; 
+  }
+  
+  if (previousValue && selectEl.querySelector(`option[value="${previousValue}"]`)) {
+    selectEl.value = previousValue;
+  } else {
+    selectEl.value = defaultOptionValue;
+  }
 }
 
 // =============================================
@@ -513,26 +557,26 @@ function showPanel(id) {
     const panelEl = document.getElementById("panel-" + id);
     if (panelEl) panelEl.style.display = "block";
 
+    if (id === "disabledLaw" || id === "org" || id === "headcount") {
+      document.getElementById("global-corp-box").style.display = "none";
+    } else {
+      document.getElementById("global-corp-box").style.display = "flex";
+    }
+
     if (id === "disabledLaw") {
       document.getElementById("header-date-box").style.display = "none";
       document.getElementById("header-year-box").style.display = "flex";
-      document.getElementById("compare-corp-box").style.display = "none";
       if (!monthlySimulatedCache.year) processMonthlyData();
-    } else if (id === "compare") {
-      document.getElementById("header-date-box").style.display = "flex";
-      document.getElementById("header-year-box").style.display = "none";
-      document.getElementById("compare-corp-box").style.display = "flex";
     } else {
       document.getElementById("header-date-box").style.display = "flex";
       document.getElementById("header-year-box").style.display = "none";
-      document.getElementById("compare-corp-box").style.display = "none";
     }
 
     const map = ["workforce","headcount","compare","hiring","resign","org","disabledLaw"];
     const idx = map.indexOf(id);
     if (idx !== -1) document.querySelectorAll(".nav-item")[idx]?.classList.add("active");
 
-    const titles = { workforce:"인력현황", headcount:"상시근로자수", compare:"상시근로자수(전월 대비)", hiring:"채용현황", resign:"퇴사자현황", org:"부서/직군별", disabledLaw:"♿ 아정네트웍스 장애인 의무고용 현황" };
+    const titles = { workforce:"인력현황", headcount:"상시근로자수", compare:"⚖️ 인원 증감 추이 분석", hiring:"채용현황", resign:"퇴사자현황", org:"부서/직군별", disabledLaw:"♿ 아정네트웍스 장애인 의무고용 현황" };
     document.getElementById("panel-title").textContent = titles[id] || id;
     updateHeaderSubtitle();
 
@@ -554,77 +598,74 @@ function showPanel(id) {
 function populateFilters() {
   if (!simulatedData) return;
   
-  // 모든 사용 가능한 유니크 법인 목록 추출
   const allCorps = [...new Set(rawEmployees.map(e => e.corp).filter(c => c && c.trim()))].sort();
 
-  // ① 인력현황용 법인 필터 세팅
-  const wfCorpSel = document.getElementById("wf-corp-filter");
-  const prevWfCorp = wfCorpSel.value;
-  wfCorpSel.innerHTML = '<option value="">전체 법인</option>';
+  const globalCorpSel = document.getElementById("global-corp-select");
+  const prevGlobalCorp = globalCorpSel.value;
+  globalCorpSel.innerHTML = '<option value="">전체 법인</option>';
   allCorps.forEach(c => {
     const o = document.createElement("option"); o.value = c; o.textContent = c;
-    if (c === prevWfCorp) o.selected = true;
-    wfCorpSel.appendChild(o);
+    if (c === prevGlobalCorp) o.selected = true;
+    globalCorpSel.appendChild(o);
   });
 
-  // ② 전월비교용 법인 필터 세팅
-  const compareCorpSel = document.getElementById("compare-corp-select");
-  const prevCompareCorp = compareCorpSel.value;
-  compareCorpSel.innerHTML = '<option value="">전체 법인</option>';
-  allCorps.forEach(c => {
+  const contSel = document.getElementById("wf-contract");
+  const prevCont = contSel.value;
+  contSel.innerHTML = '<option value="">고용형태</option>';
+  ["정규직","계약직","기타근로"].forEach(c => {
     const o = document.createElement("option"); o.value = c; o.textContent = c;
-    if (c === prevCompareCorp) o.selected = true;
-    compareCorpSel.appendChild(o);
+    if (c === prevCont) o.selected = true;
+    contSel.appendChild(o);
   });
 
-  // ③ 채용현황용 법인 필터 세팅 (추가됨)
-  const hiCorpSel = document.getElementById("hi-corp-filter");
-  const prevHiCorp = hiCorpSel.value;
-  hiCorpSel.innerHTML = '<option value="">전체 법인</option>';
-  allCorps.forEach(c => {
-    const o = document.createElement("option"); o.value = c; o.textContent = c;
-    if (c === prevHiCorp) o.selected = true;
-    hiCorpSel.appendChild(o);
-  });
-
-  // ④ 퇴사자현황용 법인 필터 세팅 (추가됨)
-  const reCorpSel = document.getElementById("re-corp-filter");
-  const prevReCorp = reCorpSel.value;
-  reCorpSel.innerHTML = '<option value="">전체 법인</option>';
-  allCorps.forEach(c => {
-    const o = document.createElement("option"); o.value = c; o.textContent = c;
-    if (c === prevReCorp) o.selected = true;
-    reCorpSel.appendChild(o);
-  });
+  const reReasonSel = document.getElementById("re-reason-filter");
+  if (reReasonSel) {
+    const prevReason = reReasonSel.value;
+    reReasonSel.innerHTML = '<option value="">전체 퇴사사유</option>';
+    const allReasons = [...new Set(rawEmployees.map(e => e.leaveReason).filter(r => r && r.trim()))].sort();
+    allReasons.forEach(r => {
+      const o = document.createElement("option"); o.value = r; o.textContent = r;
+      if (r === prevReason) o.selected = true;
+      reReasonSel.appendChild(o);
+    });
+  }
 }
 
 // =============================================
-// ① 인력현황 (직군필터 -> 법인필터 반영)
+// ① 인력현황
 // =============================================
 function renderWorkforce() {
   if (!simulatedData) return;
   const q      = document.getElementById("wf-search").value.toLowerCase();
-  const corp   = document.getElementById("wf-corp-filter").value; // 법인 필터값 획득
+  const corp   = document.getElementById("global-corp-select").value; 
   const status = document.getElementById("wf-status").value;
   const cont   = document.getElementById("wf-contract").value;
   
   const list = simulatedData.employees.filter(e => {
     if (status === "재직" && e.status !== "재직") return false;
     if (status === "퇴사" && e.status !== "퇴사") return false;
-    if (corp && e.corp !== corp) return false; // 법인 필터링 검사
+    if (corp && e.corp !== corp) return false; 
     if (cont  && e.contractType !== cont) return false;
     if (q && !String(e.name).toLowerCase().includes(q) && !String(e.empCode).toLowerCase().includes(q)) return false;
     return true;
   });
   
-  const active = simulatedData.employees.filter(e => e.status === "재직");
-  const s = simulatedData.summary;
+  let active = simulatedData.employees.filter(e => e.status === "재직");
+  let hiredYearList = simulatedData.employees;
+  if (corp) {
+    active = active.filter(e => e.corp === corp);
+    hiredYearList = hiredYearList.filter(e => e.corp === corp);
+  }
+  const targetYearStr = getYearStr();
+  const annualHiredCount = hiredYearList.filter(e => e.joinDate && e.joinDate.substring(0,4) === targetYearStr).length;
+  const leaveCount = active.filter(e => e.statusLabel === "휴직").length;
+
   document.getElementById("wf-metrics").innerHTML = `
-    <div class="metric"><div class="metric-label">해당시점 재직자</div><div class="metric-val">${active.length}<span>명</span></div><div class="metric-sub">누적 가용 ${s.total}명</div></div>
+    <div class="metric"><div class="metric-label">해당시점 재직자</div><div class="metric-val">${active.length}<span>명</span></div><div class="metric-sub">가용 인원 수치</div></div>
     <div class="metric"><div class="metric-label">정규/계약</div><div class="metric-val">${countBy(active,"contractType","정규직")}<span>명</span></div><div class="metric-sub">계약직 ${countBy(active,"contractType","계약직")}명 (기타 ${countBy(active,"contractType","기타근로")}명)</div></div>
-    <div class="metric"><div class="metric-label">평균 근속</div><div class="metric-val">${s.avgTenure}<span>년</span></div></div>
-    <div class="metric"><div class="metric-label">당해 연도 입사</div><div class="metric-val">${s.hiredThisYear}<span>명</span></div><div class="metric-sub">${getYearStr()}년도 기준</div></div>
-    <div class="metric"><div class="metric-label">휴직인원</div><div class="metric-val">${s.onLeave}<span>명</span></div></div>
+    <div class="metric"><div class="metric-label">평균 근속</div><div class="metric-val">${avg(active.map(e=>e.tenure))}<span>년</span></div></div>
+    <div class="metric"><div class="metric-label">당해 연도 입사</div><div class="metric-val">${annualHiredCount}<span>명</span></div><div class="metric-sub">${targetYearStr}년도 기준</div></div>
+    <div class="metric"><div class="metric-label">휴직인원</div><div class="metric-val">${leaveCount}<span>명</span></div></div>
   `;
   const totalResults = list.length;
   const totalPages = Math.max(1, Math.ceil(totalResults / PAGE_SIZE));
@@ -664,18 +705,31 @@ function renderWorkforce() {
 // ② 상시근로자수
 // =============================================
 function renderHeadcount() {
-  const active = simulatedData.employees.filter(e => e.status === "재직");
-  const s = simulatedData.summary;
+  let active = simulatedData.employees.filter(e => e.status === "재직");
+  let totalEmp = simulatedData.employees;
+
+  const targetYearStr = getYearStr();
+  const totalResignedCount = totalEmp.filter(e => e.status === "퇴사").length;
+  const hiredThisYear = totalEmp.filter(e => e.joinDate && e.joinDate.substring(0,4) === targetYearStr).length;
+  const resignedThisYear = totalEmp.filter(e => e.status === "퇴사" && e.leaveDate && e.leaveDate.substring(0,4) === targetYearStr).length;
+  const leaveCount = active.filter(e => e.statusLabel === "휴직").length;
+
   document.getElementById("hc-metrics").innerHTML = `
-    <div class="metric"><div class="metric-label">재직 인원</div><div class="metric-val">${s.active}<span>명</span></div></div>
-    <div class="metric"><div class="metric-label">누적 퇴사자</div><div class="metric-val">${s.resigned}<span>명</span></div></div>
-    <div class="metric"><div class="metric-label">당해 연도 입사</div><div class="metric-val">${s.hiredThisYear}<span>명</span></div></div>
-    <div class="metric"><div class="metric-label">당해 연도 퇴사</div><div class="metric-val">${s.resignedThisYear}<span>명</span></div><div class="metric-sub">${getYearStr()}년 기준</div></div>
-    <div class="metric"><div class="metric-label">휴직중</div><div class="metric-val">${s.onLeave}<span>명</span></div></div>
+    <div class="metric"><div class="metric-label">재직 인원</div><div class="metric-val">${active.length}<span>명</span></div></div>
+    <div class="metric"><div class="metric-label">누적 퇴사자</div><div class="metric-val">${totalResignedCount}<span>명</span></div></div>
+    <div class="metric"><div class="metric-label">당해 연도 입사</div><div class="metric-val">${hiredThisYear}<span>명</span></div></div>
+    <div class="metric"><div class="metric-label">당해 연도 퇴사</div><div class="metric-val">${resignedThisYear}<span>명</span></div><div class="metric-sub">${targetYearStr}년 기준</div></div>
+    <div class="metric"><div class="metric-label">휴직중</div><div class="metric-val">${leaveCount}<span>명</span></div></div>
   `;
-  renderBars("hc-contract-bars", s.byContract, "#6366f1");
-  renderBars("hc-corp-bars", s.byCorp, "#0ea5e9");
-  renderBars("hc-location-bars", s.byLocation, "#f59e0b");
+
+  const contractObj = groupCount(active, "contractType");
+  const corpObj = groupCount(active, "corp");
+  const locObj = groupCount(active, "workLocation");
+
+  renderBars("hc-contract-bars", contractObj, "#6366f1");
+  renderBars("hc-corp-bars", corpObj, "#0ea5e9");
+  renderBars("hc-location-bars", locObj, "#f59e0b");
+  
   const onLeave = active.filter(e => e.statusLabel === "휴직");
   document.getElementById("hc-leave-tbody").innerHTML = onLeave.length
     ? onLeave.map(e => `<tr>
@@ -684,36 +738,36 @@ function renderHeadcount() {
         <td><span class="badge badge-leave">${e.leaveType||"휴직"}</span></td>
         <td>${e.leaveStart||"-"}</td><td>${e.leaveEnd||"-"}</td>
       </tr>`).join("")
-    : `<tr><td colspan="6" style="text-align:center;color:var(--text-hint);padding:20px;">해당일 기준 휴직자 없음</td></tr>`;
+    : `<tr><td colspan="6" style="text-align:center;color:var(--text-hint);padding:20px;">현재 휴직자 없음</td></tr>`;
 }
 
 // =============================================
-// ⑦ 상시근로자수(전월 대비)
+// ⑦ 인원 증감 추이
 // =============================================
 function renderCompare() {
   const targetStr = document.getElementById("target-date-input").value;
   if (!targetStr) return;
 
-  const selectedCorp = document.getElementById("compare-corp-select").value;
+  const selectedCorp = document.getElementById("global-corp-select").value; 
+  const compareMonthStr = document.getElementById("compare-month-select").value; 
+
+  if(!compareMonthStr) return;
+
+  const compareYearNum = parseInt(compareMonthStr.substring(0, 4));
+  const compareMonthNum = parseInt(compareMonthStr.substring(5, 7));
 
   const currDate = new Date(targetStr);
   const currYear = currDate.getFullYear();
   const currMonth = currDate.getMonth() + 1;
   const currMonthStr = `${currYear}-${String(currMonth).padStart(2, '0')}`;
 
-  const prevDate = new Date(currDate.getFullYear(), currDate.getMonth() - 1, 1);
-  const prevYear = prevDate.getFullYear();
-  const prevMonth = prevDate.getMonth() + 1;
-  const prevMonthStr = `${prevYear}-${String(prevMonth).padStart(2, '0')}`;
-
-  const prevMonthLastDay = new Date(currDate.getFullYear(), currDate.getMonth(), 0);
-  const prevSnapshot = calculateSnapshot(prevMonthLastDay, prevMonthStr, String(prevYear));
+  const compLastDayObj = new Date(compareYearNum, compareMonthNum, 0); 
+  const compareSnapshot = calculateSnapshot(compLastDayObj, compareMonthStr, String(compareYearNum));
 
   const corpTitleSub = selectedCorp ? ` [${selectedCorp}]` : " [전체법인]";
-  document.getElementById("compare-prev-title").innerHTML = `<span>⬅️ 전월 현황${corpTitleSub}</span> <strong>${prevYear}년 ${prevMonth}월 말 기준</strong>`;
-  document.getElementById("compare-curr-title").innerHTML = `<span>현재월 현황${corpTitleSub} ➡️</span> <strong>${currYear}년 ${currMonth}월 기준</strong>`;
+  document.getElementById("compare-curr-title").innerHTML = `<span>현재월 현황${corpTitleSub} ➡️</span> <strong>${currYear}년 ${currMonth}월 시점</strong>`;
 
-  let prevEmpList = prevSnapshot.employees;
+  let prevEmpList = compareSnapshot.employees;
   let currEmpList = simulatedData.employees;
 
   if (selectedCorp) {
@@ -721,9 +775,10 @@ function renderCompare() {
     currEmpList = currEmpList.filter(e => e.corp === selectedCorp);
   }
 
+  // [오타 완벽 교정]: 오염되었던 status 분류값 비교 로직을 정교하게 복구 완료
   const pActive = prevEmpList.filter(e => e.status === "재직").length;
-  const pHired  = prevEmpList.filter(e => e.joinDate && e.joinDate.substring(0, 7) === prevMonthStr).length;
-  const pResigned = prevEmpList.filter(e => e.status === "퇴사" && e.leaveDate && e.leaveDate.substring(0, 7) === prevMonthStr).length;
+  const pHired  = prevEmpList.filter(e => e.joinDate && e.joinDate.substring(0, 7) === compareMonthStr).length;
+  const pResigned = prevEmpList.filter(e => e.status === "퇴사" && e.leaveDate && e.leaveDate.substring(0, 7) === compareMonthStr).length;
   const pLeave  = prevEmpList.filter(e => e.status === "재직" && e.statusLabel === "휴직").length;
 
   const cActive = currEmpList.filter(e => e.status === "재직").length;
@@ -732,10 +787,10 @@ function renderCompare() {
   const cLeave  = currEmpList.filter(e => e.status === "재직" && e.statusLabel === "휴직").length;
 
   document.getElementById("compare-prev-metrics").innerHTML = `
-    <div class="metric" style="margin-bottom:10px;"><div class="metric-label">전월 재직 인원</div><div class="metric-val" style="color:#4b5563;">${pActive}<span>명</span></div></div>
-    <div class="metric" style="margin-bottom:10px;"><div class="metric-label">전월 입사자 (${prevMonth}월)</div><div class="metric-val" style="color:var(--success);">${pHired}<span>명</span></div></div>
-    <div class="metric" style="margin-bottom:10px;"><div class="metric-label">전월 퇴사자 (${prevMonth}월)</div><div class="metric-val" style="color:var(--danger);">${pResigned}<span>명</span></div></div>
-    <div class="metric" style="margin-bottom:10px;"><div class="metric-label">전월 휴직자 시점</div><div class="metric-val" style="color:var(--warning);">${pLeave}<span>명</span></div></div>
+    <div class="metric" style="margin-bottom:10px;"><div class="metric-label">비교월 재직 인원</div><div class="metric-val" style="color:#4b5563;">${pActive}<span>명</span></div></div>
+    <div class="metric" style="margin-bottom:10px;"><div class="metric-label">비교월 당시 입사자 (${compareMonthNum}월)</div><div class="metric-val" style="color:var(--success);">${pHired}<span>명</span></div></div>
+    <div class="metric" style="margin-bottom:10px;"><div class="metric-label">비교월 당시 퇴사자 (${compareMonthNum}월)</div><div class="metric-val" style="color:var(--danger);">${pResigned}<span>명</span></div></div>
+    <div class="metric" style="margin-bottom:10px;"><div class="metric-label">비교월 휴직자 시점</div><div class="metric-val" style="color:var(--warning);">${pLeave}<span>명</span></div></div>
   `;
 
   document.getElementById("compare-curr-metrics").innerHTML = `
@@ -769,15 +824,15 @@ function renderCompare() {
   }
 
   document.getElementById("compare-gap-metrics").innerHTML = `
-    ${makeGapHtml("재직 인원 변동", pActive, cActive)}
-    ${makeGapHtml("입사자 추이 변동", pHired, cHired)}
-    ${makeGapHtml("퇴사자 추이 변동", pResigned, cResigned)}
-    ${makeGapHtml("휴직자 시점 변동", pLeave, cLeave)}
+    ${makeGapHtml("재직 인원 변동 (Gap)", pActive, cActive)}
+    ${makeGapHtml("입사자 추이 변동 (Gap)", pHired, cHired)}
+    ${makeGapHtml("퇴사자 추이 변동 (Gap)", pResigned, cResigned)}
+    ${makeGapHtml("휴직자 시점 변동 (Gap)", pLeave, cLeave)}
   `;
 }
 
 // =============================================
-// ③ 채용현황 (월별 필터 및 법인 필터 연동 완료)
+// ③ 채용현황
 // =============================================
 function renderHiring() {
   const targetDateStr = document.getElementById("target-date-input").value;
@@ -785,44 +840,44 @@ function renderHiring() {
   const targetMonthStr = targetDateStr ? targetDateStr.substring(0, 7) : ""; 
   const displayMonth = targetDateStr ? parseInt(targetDateStr.substring(5, 7)) : "";
 
-  // 신규 필터 요소값 획득
   const monthFilter = document.getElementById("hi-month-filter").value;
-  const corpFilter = document.getElementById("hi-corp-filter").value;
+  const corpFilter = document.getElementById("global-corp-select").value; 
 
-  // 1차 연도 매칭 베이스 데이터 추출
-  let hired = simulatedData.employees.filter(e => e.joinDate && String(e.joinDate).substring(0,4) === targetYear);
+  let hiredBase = simulatedData.employees.filter(e => e.joinDate && String(e.joinDate).substring(0,4) === targetYear);
   const hiredThisMonth = simulatedData.employees.filter(e => e.joinDate && String(e.joinDate).substring(0,7) === targetMonthStr);
 
-  // 상단 당월 메트릭용 기본 텍스트
+  let annualHiredBase = hiredBase;
+  if (corpFilter) {
+    annualHiredBase = annualHiredBase.filter(e => e.corp === corpFilter);
+  }
+  const fixedAnnualTotal = annualHiredBase.length; 
+
+  let hiredDisplay = hiredBase;
+  if (monthFilter) {
+    hiredDisplay = hiredDisplay.filter(e => String(e.joinDate).substring(5,7) === monthFilter);
+  }
+  if (corpFilter) {
+    hiredDisplay = hiredDisplay.filter(e => e.corp === corpFilter);
+  }
+
   let monthMetricLabel = `${displayMonth}월 당월 채용`;
   let monthMetricSub = `${targetMonthStr} 기준`;
 
-  // 월별 / 법인 조건 유기적 필터링 반영
   if (monthFilter) {
-    hired = hired.filter(e => String(e.joinDate).substring(5,7) === monthFilter);
     monthMetricLabel = `${parseInt(monthFilter)}월 집중 채용`;
-    monthMetricSub = `${targetYear}-${monthFilter} 필터 범위`;
+    monthMetricSub = `${targetYear}-${monthFilter} 범위`;
   }
-  if (corpFilter) {
-    hired = hired.filter(e => e.corp === corpFilter);
-  }
-
-  // 상단 메트릭 보드 출력 계산
-  const targetHiredCount = hired.length;
-  const regCount = hired.filter(e => e.contractType === "정규직").length;
-  const conCount = hired.filter(e => e.contractType === "계약직").length;
-  const jobGroupSize = new Set(hired.map(e => e.jobGroup).filter(Boolean)).size;
 
   document.getElementById("hi-metrics").innerHTML = `
-    <div class="metric" style="border-color: var(--accent); background: var(--accent-light);"><div class="metric-label" style="color: var(--accent); font-weight:600;">${monthMetricLabel}</div><div class="metric-val" style="color: var(--accent);">${monthFilter ? targetHiredCount : hiredThisMonth.length}<span>명</span></div><div class="metric-sub">${monthMetricSub}</div></div>
-    <div class="metric"><div class="metric-label">범위내 채용 총합</div><div class="metric-val">${targetHiredCount}<span>명</span></div></div>
-    <div class="metric"><div class="metric-label">정규직 입사</div><div class="metric-val">${regCount}<span>명</span></div></div>
-    <div class="metric"><div class="metric-label">계약직 입사</div><div class="metric-val">${conCount}<span>명</span></div></div>
-    <div class="metric"><div class="metric-label">모집 직군수</div><div class="metric-val">${jobGroupSize}<span>개</span></div></div>
+    <div class="metric" style="border-color: var(--accent); background: var(--accent-light);"><div class="metric-label" style="color: var(--accent); font-weight:600;">${monthMetricLabel}</div><div class="metric-val" style="color: var(--accent);">${monthFilter ? hiredDisplay.length : hiredThisMonth.filter(e => !corpFilter || e.corp === corpFilter).length}<span>명</span></div><div class="metric-sub">${monthMetricSub}</div></div>
+    <div class="metric" style="border: 1px solid var(--border-strong); background: #fafafa;"><div class="metric-label" style="font-weight:600; color:var(--text);">${targetYear}년 연간 채용 합계</div><div class="metric-val" style="color:var(--text);">${fixedAnnualTotal}<span>명</span></div><div class="metric-sub" style="color:var(--accent); font-weight:500;">💡 조회 기준일 연도 기준 (월 필터 무관)</div></div>
+    <div class="metric"><div class="metric-label">${targetYear}년 정규직 입사</div><div class="metric-val">${hiredDisplay.filter(e => e.contractType === "정규직").length}<span>명</span></div></div>
+    <div class="metric"><div class="metric-label">${targetYear}년 계약직 입사</div><div class="metric-val">${hiredDisplay.filter(e => e.contractType === "계약직").length}<span>명</span></div></div>
+    <div class="metric"><div class="metric-label">${targetYear}년 모집 직군수</div><div class="metric-val">${new Set(hiredDisplay.map(e => e.jobGroup).filter(Boolean)).size}<span>개</span></div></div>
   `;
 
-  document.getElementById("hi-tbody").innerHTML = hired.length
-    ? hired.sort((a,b)=>String(b.joinDate).localeCompare(String(a.joinDate))).map(e => {
+  document.getElementById("hi-tbody").innerHTML = hiredDisplay.length
+    ? hiredDisplay.sort((a,b)=>String(b.joinDate).localeCompare(String(a.joinDate))).map(e => {
         let typeCls = e.contractType==="정규직"?"badge-reg":e.contractType==="계약직"?"badge-con":"badge-etc";
         return `<tr>
           <td class="emp-id">${e.empCode}</td><td class="name-cell">${e.name}</td>
@@ -834,12 +889,12 @@ function renderHiring() {
     : `<tr><td colspan="7" style="text-align:center;color:var(--text-hint);padding:20px;">조건에 일치하는 입사 데이터가 없습니다.</td></tr>`;
   
   const gc = {};
-  hired.forEach(e => { if(e.jobGroup) gc[e.jobGroup] = (gc[e.jobGroup]||0)+1; });
+  hiredDisplay.forEach(e => { if(e.jobGroup) gc[e.jobGroup] = (gc[e.jobGroup]||0)+1; });
   renderBars("hi-group-bars", gc, "#22c55e");
 }
 
 // =============================================
-// ④ 퇴사자현황 (월별 필터 및 법인 필터 연동 완료)
+// ④ 퇴사자현황
 // =============================================
 function renderResign() {
   const targetDateStr = document.getElementById("target-date-input").value;
@@ -847,41 +902,52 @@ function renderResign() {
   const targetMonthStr = targetDateStr ? targetDateStr.substring(0, 7) : "";
   const displayMonth = targetDateStr ? parseInt(targetDateStr.substring(5, 7)) : "";
 
-  // 신규 필터 요소값 획득
   const monthFilter = document.getElementById("re-month-filter").value;
-  const corpFilter = document.getElementById("re-corp-filter").value;
+  const corpFilter = document.getElementById("global-corp-select").value; 
+  const reasonFilter = document.getElementById("re-reason-filter").value; 
 
-  // 연도 베이스 1차 거르기
-  let filtered = simulatedData.employees.filter(e => e.status === "퇴사" && e.leaveDate && String(e.leaveDate).substring(0,4) === targetYear);
+  let resignBase = simulatedData.employees.filter(e => e.status === "퇴사" && e.leaveDate && String(e.leaveDate).substring(0,4) === targetYear);
   const resignedThisMonth = simulatedData.employees.filter(e => e.status === "퇴사" && e.leaveDate && String(e.leaveDate).substring(0,7) === targetMonthStr);
+
+  let annualResignBase = resignBase;
+  if (corpFilter) {
+    annualResignBase = annualResignBase.filter(e => e.corp === corpFilter);
+  }
+  const fixedAnnualTotal = annualResignBase.length; 
+
+  let resignDisplay = resignBase;
+  if (monthFilter) {
+    resignDisplay = resignDisplay.filter(e => String(e.leaveDate).substring(5,7) === monthFilter);
+  }
+  if (corpFilter) {
+    resignDisplay = resignDisplay.filter(e => e.corp === corpFilter);
+  }
+  if (reasonFilter) {
+    resignDisplay = resignDisplay.filter(e => e.leaveReason === reasonFilter); 
+  }
+
+  const totalCount = simulatedData.employees.length;
+  const turnover = totalCount ? Math.round((resignDisplay.length / totalCount) * 1000) / 10 : 0;
 
   let monthMetricLabel = `${displayMonth}월 당월 퇴사`;
   let monthMetricSub = `${targetMonthStr} 기준`;
 
-  // 조건부 유기적 스크리닝 진행
   if (monthFilter) {
-    filtered = filtered.filter(e => String(e.leaveDate).substring(5,7) === monthFilter);
     monthMetricLabel = `${parseInt(monthFilter)}월 집중 퇴사`;
-    monthMetricSub = `${targetYear}-${monthFilter} 필터 범위`;
+    monthMetricSub = `${targetYear}-${monthFilter} 범위`;
   }
-  if (corpFilter) {
-    filtered = filtered.filter(e => e.corp === corpFilter);
-  }
-
-  const totalCount = simulatedData.employees.length;
-  const turnover = totalCount ? Math.round((filtered.length / totalCount) * 1000) / 10 : 0;
 
   document.getElementById("re-metrics").innerHTML = `
-    <div class="metric" style="border-color: var(--danger); background: #fef2f2;"><div class="metric-label" style="color: var(--danger); font-weight:600;">${monthMetricLabel}</div><div class="metric-val" style="color: var(--danger);">${monthFilter ? filtered.length : resignedThisMonth.length}<span>명</span></div><div class="metric-sub">${monthMetricSub}</div></div>
-    <div class="metric"><div class="metric-label">범위내 퇴사 총합</div><div class="metric-val">${filtered.length}<span>명</span></div></div>
-    <div class="metric"><div class="metric-label">범위 이직률</div><div class="metric-val">${turnover}<span>%</span></div></div>
-    <div class="metric"><div class="metric-label">평균 재직기간</div><div class="metric-val">${avg(filtered.map(e=>e.tenure))}<span>년</span></div></div>
+    <div class="metric" style="border-color: var(--danger); background: #fef2f2;"><div class="metric-label" style="color: var(--danger); font-weight:600;">${monthMetricLabel}</div><div class="metric-val" style="color: var(--danger);">${monthFilter ? resignDisplay.length : resignedThisMonth.filter(e => !corpFilter || e.corp === corpFilter).length}<span>명</span></div><div class="metric-sub">${monthMetricSub}</div></div>
+    <div class="metric" style="border: 1px solid var(--border-strong); background: #fafafa;"><div class="metric-label" style="font-weight:600; color:var(--text);">${targetYear}년 연간 퇴사 합계</div><div class="metric-val" style="color:var(--text);">${fixedAnnualTotal}<span>명</span></div><div class="metric-sub" style="color:var(--accent); font-weight:500;">💡 조회 기준일 연도 기준 (월/사유 무관)</div></div>
+    <div class="metric"><div class="metric-label">${targetYear}년 연간 이직률</div><div class="metric-val">${turnover}<span>%</span></div></div>
+    <div class="metric"><div class="metric-label">${targetYear}년 평균 근속 (퇴사자)</div><div class="metric-val">${avg(resignDisplay.map(e=>e.tenure))}<span>년</span></div></div>
     <div class="metric"><div class="metric-label">누적 총 퇴사</div><div class="metric-val">${simulatedData.employees.filter(e=>e.status==="퇴사").length}<span>명</span></div></div>
   `;
   
-  document.getElementById("re-year-label").textContent = targetYear + "년" + (monthFilter ? ` ${parseInt(monthFilter)}월` : "") + (corpFilter ? ` [${corpFilter}]` : "");
-  document.getElementById("re-tbody").innerHTML = filtered.length
-    ? filtered.sort((a,b)=>String(b.leaveDate).localeCompare(String(a.leaveDate))).map(e => {
+  document.getElementById("re-year-label").textContent = targetYear + "년" + (monthFilter ? ` ${parseInt(monthFilter)}월` : "") + (corpFilter ? ` [${corpFilter}]` : "") + (reasonFilter ? ` (${reasonFilter})` : "");
+  document.getElementById("re-tbody").innerHTML = resignDisplay.length
+    ? resignDisplay.sort((a,b)=>String(b.leaveDate).localeCompare(String(a.leaveDate))).map(e => {
         let typeCls = e.contractType==="정규직"?"badge-reg":e.contractType==="계약직"?"badge-con":"badge-etc";
         return `<tr>
           <td class="emp-id">${e.empCode}</td><td class="name-cell">${e.name}</td>
@@ -894,7 +960,7 @@ function renderResign() {
     : `<tr><td colspan="9" style="text-align:center;color:var(--text-hint);padding:20px;">조건에 일치하는 퇴사 데이터가 없습니다.</td></tr>`;
   
   const gc = {}, rc = {};
-  filtered.forEach(e => {
+  resignDisplay.forEach(e => {
     if(e.jobGroup) gc[e.jobGroup] = (gc[e.jobGroup]||0)+1;
     const r = e.leaveReason || "미기재"; rc[r] = (rc[r]||0)+1;
   });
@@ -1005,6 +1071,7 @@ function avg(nums) {
 }
 function now() { return new Date().toLocaleTimeString("ko-KR",{hour:"2-digit",minute:"2-digit"}); }
 
+buildCompareMonthOptions();
 loadData();
 </script>
 </body>
