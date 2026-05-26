@@ -503,7 +503,7 @@ function showPanel(id) {
     const idx = map.indexOf(id);
     if (idx !== -1) document.querySelectorAll(".nav-item")[idx]?.classList.add("active");
 
-    const titles = { workforce:"인력현황", headcount:"상시근로자수", compare:"상시근로자수 (전월 대비)", hiring:"채용현황", resign:"퇴사자현황", org:"부서/직군별", disabledLaw:"♿ 아정네트웍스 장애인 의무고용 현황" };
+    const titles = { workforce:"인력현황", headcount:"상시근로자수", compare:"상시근로자수(전월 대비)", hiring:"채용현황", resign:"퇴사자현황", org:"부서/직군별", disabledLaw:"♿ 아정네트웍스 장애인 의무고용 현황" };
     document.getElementById("panel-title").textContent = titles[id] || id;
     updateHeaderSubtitle();
 
