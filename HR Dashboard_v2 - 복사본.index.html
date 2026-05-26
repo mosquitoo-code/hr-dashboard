@@ -1,0 +1,905 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>HR Dashboard Master</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  :root {
+    --bg: #f5f5f3; --surface: #ffffff;
+    --border: rgba(0,0,0,0.08); --border-strong: rgba(0,0,0,0.15);
+    --text: #1a1a1a; --text-muted: #6b7280; --text-hint: #9ca3af;
+    --accent: #6366f1; --accent-light: #eef2ff;
+    --success: #22c55e; --warning: #f59e0b; --danger: #ef4444;
+    --radius: 10px; --radius-sm: 6px;
+  }
+  body { font-family: 'Pretendard', 'Apple SD Gothic Neo', 'Noto Sans KR', sans-serif; background: var(--bg); color: var(--text); font-size: 14px; line-height: 1.5; }
+  .shell { display: flex; min-height: 100vh; }
+  .sidebar { width: 200px; flex-shrink: 0; background: var(--surface); border-right: 0.5px solid var(--border); padding: 24px 0; display: flex; flex-direction: column; position: fixed; top: 0; left: 0; bottom: 0; z-index: 10; }
+  .main { margin-left: 200px; flex: 1; padding: 28px 28px 40px; }
+  .logo { padding: 0 16px 20px; font-size: 15px; font-weight: 600; display: flex; align-items: center; gap: 8px; border-bottom: 0.5px solid var(--border); margin-bottom: 12px; }
+  .logo-icon { width: 28px; height: 28px; background: var(--accent); border-radius: 7px; display: flex; align-items: center; justify-content: center; color: white; font-size: 14px; }
+  .nav-item { display: flex; align-items: center; gap: 9px; padding: 8px 16px; cursor: pointer; font-size: 13px; color: var(--text-muted); border-left: 2px solid transparent; transition: all .15s; }
+  .nav-item:hover { color: var(--text); background: var(--bg); }
+  .nav-item.active { color: var(--accent); background: var(--accent-light); border-left-color: var(--accent); font-weight: 500; }
+  .nav-icon { font-size: 15px; width: 18px; text-align: center; }
+  .sidebar-footer { margin-top: auto; padding: 12px 16px; font-size: 11px; color: var(--text-hint); border-top: 0.5px solid var(--border); }
+  .sync-dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: var(--success); margin-right: 5px; }
+  .page-header { display: flex; align-items: flex-start; justify-content: space-between; margin-bottom: 20px; }
+  .page-title { font-size: 20px; font-weight: 600; }
+  .page-sub { font-size: 12px; color: var(--text-muted); margin-top: 3px; }
+  .header-controls { display: flex; align-items: center; gap: 10px; }
+  .target-date-box { display: flex; align-items: center; gap: 6px; padding: 4px 10px; border-radius: var(--radius-sm); border: 0.5px solid var(--border-strong); background: var(--surface); font-size: 12px; color: var(--text); font-weight: 500; }
+  .target-date-box input, .target-date-box select { border: none; font-family: inherit; font-size: 12px; outline: none; cursor: pointer; color: var(--accent); font-weight: 600; background: transparent; }
+  .refresh-btn { display: flex; align-items: center; gap: 5px; padding: 6px 12px; border-radius: var(--radius-sm); border: 0.5px solid var(--border-strong); background: var(--surface); cursor: pointer; font-size: 12px; color: var(--text-muted); }
+  .refresh-btn:hover { background: var(--bg); }
+  .panel { display: none; }
+  .metric-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 10px; margin-bottom: 16px; }
+  .metric { background: var(--surface); border: 0.5px solid var(--border); border-radius: var(--radius); padding: 14px 16px; }
+  .metric-label { font-size: 11px; color: var(--text-muted); margin-bottom: 6px; }
+  .metric-val { font-size: 24px; font-weight: 600; color: var(--text); }
+  .metric-val span { font-size: 13px; font-weight: 400; color: var(--text-muted); margin-left: 2px; }
+  .metric-sub { font-size: 11px; color: var(--text-hint); margin-top: 3px; }
+  .card { background: var(--surface); border: 0.5px solid var(--border); border-radius: var(--radius); padding: 16px 18px; margin-bottom: 14px; }
+  .card-title { font-size: 13px; font-weight: 500; margin-bottom: 14px; display: flex; justify-content: space-between; align-items: center; }
+  .card-sub { font-size: 11px; color: var(--text-muted); font-weight: 400; }
+  .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+  .three-col { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; }
+  .tbl-wrap { overflow-x: auto; }
+  table { width: 100%; border-collapse: collapse; font-size: 12px; }
+  th { text-align: left; font-weight: 400; color: var(--text-muted); padding: 6px 10px; border-bottom: 0.5px solid var(--border); font-size: 11px; white-space: nowrap; }
+  td { padding: 8px 10px; border-bottom: 0.5px solid var(--border); color: var(--text); }
+  tr:last-child td { border-bottom: none; }
+  tr:hover td { background: var(--bg); }
+  .emp-id { color: var(--text-muted); font-size: 11px; }
+  .name-cell { font-weight: 500; }
+  .badge { display: inline-block; padding: 2px 8px; border-radius: 20px; font-size: 10px; white-space: nowrap; }
+  .badge-active  { background: #dcfce7; color: #166534; }
+  .badge-resign  { background: #fee2e2; color: #991b1b; }
+  .badge-leave   { background: #e0f2fe; color: #0369a1; }
+  .badge-planned { background: #fef9c3; color: #854d0e; }
+  .badge-reg     { background: #e0f2fe; color: #0369a1; }
+  .badge-con     { background: #fef9c3; color: #854d0e; }
+  .badge-etc     { background: #f3f4f6; color: #374151; }
+  .filter-row { display: flex; gap: 8px; margin-bottom: 12px; flex-wrap: wrap; }
+  .filter-row input, .filter-row select { padding: 6px 10px; font-size: 12px; border: 0.5px solid var(--border-strong); border-radius: var(--radius-sm); background: var(--surface); color: var(--text); }
+  .filter-row input { flex: 1; min-width: 160px; }
+  .bar-row { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; font-size: 12px; }
+  .bar-label { width: 90px; color: var(--text-muted); text-align: right; flex-shrink: 0; font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .bar-bg { flex: 1; background: var(--bg); border-radius: 4px; height: 18px; overflow: hidden; }
+  .bar-fill { height: 100%; border-radius: 4px; display: flex; align-items: center; justify-content: flex-end; padding-right: 7px; font-size: 10px; color: white; font-weight: 500; min-width: 20px; }
+  .bar-count { width: 35px; text-align: right; font-size: 11px; color: var(--text-muted); }
+  .loading { display: flex; align-items: center; justify-content: center; height: 200px; color: var(--text-muted); font-size: 13px; gap: 8px; }
+  .spinner { width: 18px; height: 18px; border: 2px solid var(--border); border-top-color: var(--accent); border-radius: 50%; animation: spin .7s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .error-box { background: #fee2e2; border: 0.5px solid #fca5a5; border-radius: var(--radius); padding: 16px; color: #991b1b; font-size: 13px; }
+  .error-box code { font-size: 11px; display: block; margin-top: 6px; color: #7f1d1d; white-space: pre-wrap; }
+  .pager { display: flex; align-items: center; gap: 6px; margin-top: 10px; font-size: 12px; }
+  .pager button { padding: 4px 10px; border: 0.5px solid var(--border-strong); border-radius: var(--radius-sm); background: var(--surface); cursor: pointer; font-size: 12px; }
+  .pager button:disabled { opacity: .4; cursor: default; }
+  .pager-info { color: var(--text-muted); }
+
+  /* 전월대비 스플릿 베너 전용 스타일 */
+  .compare-title-banner { font-size: 13px; font-weight: 600; padding: 10px 14px; border-radius: var(--radius-sm); margin-bottom: 12px; display: flex; justify-content: space-between; align-items: center; }
+  .bg-prev { background: #f3f4f6; color: #4b5563; border-left: 4px solid #9ca3af; }
+  .bg-curr { background: var(--accent-light); color: var(--accent); border-left: 4px solid var(--accent); }
+  .bg-gap  { background: #fffbeb; color: #d97706; border-left: 4px solid #f59e0b; }
+</style>
+</head>
+<body>
+<div class="shell">
+  <aside class="sidebar">
+    <div class="logo"><div class="logo-icon">👥</div>HR Dashboard</div>
+    <nav>
+      <div class="nav-item active" onclick="showPanel('workforce')"><span class="nav-icon">📋</span> 인력현황</div>
+      <div class="nav-item" onclick="showPanel('headcount')"><span class="nav-icon">📊</span> 상시근로자수</div>
+      <div class="nav-item" onclick="showPanel('compare')"><span class="nav-icon">⚖️</span> 상시근로자수(전월 대비)</div>
+      <div class="nav-item" onclick="showPanel('hiring')"><span class="nav-icon">🙋</span> 채용현황</div>
+      <div class="nav-item" onclick="showPanel('resign')"><span class="nav-icon">📤</span> 퇴사자현황</div>
+      <div class="nav-item" onclick="showPanel('org')"><span class="nav-icon">🗂️</span> 부서/직군별</div>
+      <div class="nav-item" onclick="showPanel('disabledLaw')"><span class="nav-icon">♿</span> 장애인고용</div>
+    </nav>
+    <div class="sidebar-footer"><span class="sync-dot"></span><span id="last-sync">동기화 중...</span></div>
+  </aside>
+
+  <main class="main">
+    <div class="page-header">
+      <div>
+        <div class="page-title" id="panel-title">인력현황</div>
+        <div class="page-sub" id="panel-sub">로딩 중...</div>
+      </div>
+      <div class="header-controls">
+        <div class="target-date-box" id="header-date-box">
+          📅 조회 기준일:
+          <input type="date" id="target-date-input" onchange="onTargetDateChange()" />
+        </div>
+        <div class="target-date-box" id="header-year-box" style="display:none;">
+          🗓️ 분석 연도:
+          <select id="target-year-select" onchange="onTargetYearChange()"></select>
+        </div>
+        <button class="refresh-btn" onclick="loadData()">🔄 새로고침</button>
+      </div>
+    </div>
+
+    <div id="loading-view" class="loading"><div class="spinner"></div> 구글 시트에서 데이터를 불러오는 중...</div>
+    <div id="error-view" style="display:none; margin-bottom:20px;"></div>
+
+    <div class="panel" id="panel-workforce">
+      <div class="metric-row" id="wf-metrics"></div>
+      <div class="card">
+        <div class="card-title">전체 임직원 목록 <span class="card-sub" id="wf-count"></span></div>
+        <div class="filter-row">
+          <input type="text" id="wf-search" placeholder="이름 또는 사원코드 검색…" oninput="renderWorkforce()" />
+          <select id="wf-group" onchange="renderWorkforce()"><option value="">전체 직군</option></select>
+          <select id="wf-status" onchange="renderWorkforce()">
+            <option value="재직">재직중 (휴직포함)</option>
+            <option value="">전체 목록</option>
+            <option value="퇴사">퇴사자</option>
+          </select>
+          <select id="wf-contract" onchange="renderWorkforce()"><option value="">고용형태</option></select>
+        </div>
+        <div class="tbl-wrap">
+          <table>
+            <thead><tr><th>사원코드</th><th>이름</th><th>법인</th><th>직군</th><th>담당업무</th><th>계약구분(원문)</th><th>분류</th><th>입사일</th><th>근속</th><th>상태</th></tr></thead>
+            <tbody id="wf-tbody"></tbody>
+          </table>
+        </div>
+        <div class="pager" id="wf-pager"></div>
+      </div>
+    </div>
+
+    <div class="panel" id="panel-headcount">
+      <div class="metric-row" id="hc-metrics"></div>
+      <div class="three-col">
+        <div class="card"><div class="card-title">고용형태별 현황</div><div id="hc-contract-bars"></div></div>
+        <div class="card"><div class="card-title">법인별 현황</div><div id="hc-corp-bars"></div></div>
+        <div class="card"><div class="card-title">근무지별 현황</div><div id="hc-location-bars"></div></div>
+      </div>
+      <div class="card">
+        <div class="card-title">휴직자 현황</div>
+        <div class="tbl-wrap">
+          <table>
+            <thead><tr><th>사원코드</th><th>이름</th><th>직군</th><th>휴직유형</th><th>휴직시작</th><th>휴직종료</th></tr></thead>
+            <tbody id="hc-leave-tbody"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <div class="panel" id="panel-compare">
+      <div class="three-col">
+        <div>
+          <div class="compare-title-banner bg-prev" id="compare-prev-title">전월 현황</div>
+          <div id="compare-prev-metrics"></div>
+        </div>
+        <div>
+          <div class="compare-title-banner bg-curr" id="compare-curr-title">현재월 현황</div>
+          <div id="compare-curr-metrics"></div>
+        </div>
+        <div>
+          <div class="compare-title-banner bg-gap">📊 전월 대비 증감 분석 (Gap)</div>
+          <div id="compare-gap-metrics"></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="panel" id="panel-hiring">
+      <div class="metric-row" id="hi-metrics"></div>
+      <div class="card">
+        <div class="card-title">해당 연도 입사자 목록</div>
+        <div class="tbl-wrap">
+          <table>
+            <thead><tr><th>사원코드</th><th>이름</th><th>법인</th><th>직군</th><th>담당업무</th><th>계약구분</th><th>입사일</th></tr></thead>
+            <tbody id="hi-tbody"></tbody>
+          </table>
+        </div>
+      </div>
+      <div class="card"><div class="card-title">직군별 채용 현황 (해당 연도)</div><div id="hi-group-bars"></div></div>
+    </div>
+
+    <div class="panel" id="panel-resign">
+      <div class="metric-row" id="re-metrics"></div>
+      <div class="card">
+        <div class="card-title">Retiree List <span class="card-sub" id="re-year-label"></span></div>
+        <div class="tbl-wrap">
+          <table>
+            <thead><tr><th>사원코드</th><th>이름</th><th>직군</th><th>담당업무</th><th>계약구분</th><th>입사일</th><th>퇴사일</th><th>재직기간</th><th>퇴사사유</th></tr></thead>
+            <tbody id="re-tbody"></tbody>
+          </table>
+        </div>
+      </div>
+      <div class="two-col">
+        <div class="card"><div class="card-title">직군별 퇴사</div><div id="re-group-bars"></div></div>
+        <div class="card"><div class="card-title">퇴사사유별</div><div id="re-reason-bars"></div></div>
+      </div>
+    </div>
+
+    <div class="panel" id="panel-org">
+      <div class="metric-row" id="org-metrics"></div>
+      <div class="two-col">
+        <div class="card"><div class="card-title">직군별 인원</div><div id="org-group-bars"></div></div>
+        <div class="card"><div class="card-title">최하위 부서별 인원 (상위 10)</div><div id="org-dept-bars"></div></div>
+      </div>
+      <div class="card"><div class="card-title">직군 × 계약구분 매트릭스</div><div class="tbl-wrap" id="org-matrix"></div></div>
+    </div>
+
+    <div class="panel" id="panel-disabledLaw">
+      <div class="metric-row" id="dl-metrics"></div>
+      <div class="card">
+        <div class="card-title">아정네트웍스 월별 의무고용 산정 현황 <span class="card-sub">각 월말일자 시점 '아정네트웍스' 소속 재직 데이터 기준 역산 결과</span></div>
+        <div class="tbl-wrap">
+          <table style="text-align:center;">
+            <thead>
+              <tr style="background:var(--bg);">
+                <th>월별 구분</th>
+                <th style="text-align:center;">월말 총 재직자 (아정)</th>
+                <th style="text-align:center; color:var(--accent);">법상 상시근로자수</th>
+                <th style="text-align:center; color:var(--warning);">법정 의무고용 인원 (3.1%)</th>
+                <th style="text-align:center; color:var(--success);">현재 장애인 고용 인원</th>
+                <th style="text-align:center;">준수 여부</th>
+              </tr>
+            </thead>
+            <tbody id="dl-monthly-tbody"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </main>
+</div>
+
+<script>
+// =============================================
+// ★ 여기에 Apps Script 배포 URL을 입력하세요 ★
+// =============================================
+const API_URL = "https://script.google.com/macros/s/AKfycbw5MFl7rjkq3iJ-rUJ2cN4DDaDOQJiaiY23g9oIQzD-grHqs6uOD1ykNf4AjwbDPyZVlA/exec";
+
+// =============================================
+let rawEmployees = [];
+let simulatedData = null;
+let monthlySimulatedCache = {};
+let currentPanelId = "workforce";
+let wfPage = 1;
+const PAGE_SIZE = 20;
+const GROUP_COLORS = ["#6366f1","#0ea5e9","#22c55e","#f59e0b","#ec4899","#8b5cf6","#14b8a6","#64748b","#ef4444","#f97316"];
+
+const initialToday = new Date();
+document.getElementById("target-date-input").value = initialToday.toISOString().substring(0, 10);
+const yrSelect = document.getElementById("target-year-select");
+const thisYrNum = initialToday.getFullYear();
+for (let y = thisYrNum; y >= 2024; y--) {
+  const opt = document.createElement("option"); opt.value = y; opt.textContent = y + "년";
+  yrSelect.appendChild(opt);
+}
+
+// =============================================
+// 계약구분 정규화
+// =============================================
+function normalizeContractType(rawType) {
+  if (!rawType) return "기타근로";
+  const clean = rawType.toString().trim().replace(/\s+/g, '');
+  if (clean.includes("1.정규직") || clean === "정규직") return "정규직";
+  if (clean.includes("2.계약직") || clean === "계약직") return "계약직";
+  return "기타근로";
+}
+
+// =============================================
+// 데이터 로드
+// =============================================
+async function loadData() {
+  document.getElementById("loading-view").style.display = "flex";
+  document.getElementById("error-view").style.display = "none";
+  document.querySelectorAll(".panel").forEach(p => p.style.display = "none");
+  try {
+    const res = await fetch(API_URL + "?t=" + Date.now());
+    if (!res.ok) throw new Error("HTTP 오류 상태 코드: " + res.status);
+    const json = await res.json();
+    if (json.error) throw new Error("서버 에러:\n" + json.error);
+    rawEmployees = json.employees || [];
+    document.getElementById("loading-view").style.display = "none";
+    document.getElementById("last-sync").textContent = "동기화 완료 " + now();
+    processDataByTargetDate();
+  } catch(e) {
+    document.getElementById("loading-view").style.display = "none";
+    const ev = document.getElementById("error-view");
+    ev.style.display = "block";
+    ev.innerHTML = `<div class="error-box">⚠️ 데이터를 불러오지 못했습니다.<code>${e.message}</code></div>`;
+  }
+}
+
+function onTargetDateChange() {
+  if (rawEmployees.length === 0) return;
+  processDataByTargetDate();
+}
+
+function onTargetYearChange() {
+  if (rawEmployees.length === 0) return;
+  processMonthlyData();
+}
+
+function processDataByTargetDate() {
+  const targetStr = document.getElementById("target-date-input").value;
+  if (!targetStr) return;
+  const targetDate = new Date(targetStr);
+  const targetYear = targetStr.substring(0, 4);
+  simulatedData = calculateSnapshot(targetDate, targetStr, targetYear);
+  updateHeaderSubtitle();
+  populateFilters();
+  showPanel(currentPanelId);
+}
+
+function updateHeaderSubtitle() {
+  if (!simulatedData) return;
+  if (currentPanelId === "disabledLaw") {
+    if (monthlySimulatedCache.year) {
+      document.getElementById("panel-sub").textContent = `${monthlySimulatedCache.year}년도 1월~12월 아정네트웍스 역산 레포트 구성 완료`;
+    }
+  } else {
+    document.getElementById("panel-sub").textContent = `조회대상 ${simulatedData.summary.total}명 · 해당시점 통계 반영 완료`;
+  }
+}
+
+function processMonthlyData() {
+  const selectedYear = document.getElementById("target-year-select").value;
+  if (!selectedYear) return;
+  const monthlyReport = [];
+  const isLeapYear = (y) => (y % 4 === 0 && y % 100 !== 0) || (y % 400 === 0);
+  const lastDays = [31, isLeapYear(Number(selectedYear)) ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+  for (let m = 1; m <= 12; m++) {
+    const monthStr = String(m).padStart(2, '0');
+    const dateStr = `${selectedYear}-${monthStr}-${lastDays[m-1]}`;
+    const endOfMonthDate = new Date(dateStr);
+    if (endOfMonthDate > new Date()) continue;
+    const snapshot = calculateSnapshot(endOfMonthDate, dateStr, selectedYear);
+    monthlyReport.push({
+      monthLabel: `${m}월 말`,
+      totalActive:    snapshot.summary.dlCorpTotalActive,
+      dlBaseCount:    snapshot.summary.dlBaseCount,
+      dlMandatory:    snapshot.summary.dlMandatory,
+      dlCurrentScore: snapshot.summary.dlCurrentScore
+    });
+  }
+  const monthCount = monthlyReport.length || 1;
+  const avgBase      = Math.round(monthlyReport.reduce((a,b)=>a+b.dlBaseCount, 0) / monthCount * 10) / 10;
+  const avgMandatory = Math.floor(avgBase * 0.031);
+  const avgScore     = Math.round(monthlyReport.reduce((a,b)=>a+b.dlCurrentScore, 0) / monthCount * 10) / 10;
+  monthlySimulatedCache = { year: selectedYear, list: monthlyReport, avgBase, avgMandatory, avgScore };
+  if (currentPanelId === "disabledLaw") renderDisabledLaw();
+}
+
+// =============================================
+// 스냅샷 계산 (핵심 로직)
+// =============================================
+function calculateSnapshot(dateObj, dateStr, yearStr) {
+  const parsedEmployees = [];
+
+  rawEmployees.forEach(emp => {
+    if (!emp.joinDate) return;
+    const joinDateObj = new Date(emp.joinDate);
+    if (joinDateObj > dateObj) return;
+
+    let simulatedStatus = "재직";
+    let simulatedLabel  = emp.statusLabel || "재직";
+
+    if (emp.leaveDate) {
+      const leaveDateObj = new Date(emp.leaveDate);
+      if (leaveDateObj <= dateObj) {
+        simulatedStatus = "퇴사";
+        simulatedLabel  = "퇴사";
+      }
+    }
+    if (simulatedStatus === "재직" && emp.leaveStart) {
+      const startLeave = new Date(emp.leaveStart);
+      const endLeave   = emp.leaveEnd ? new Date(emp.leaveEnd) : new Date("9999-12-31");
+      if (dateObj >= startLeave && dateObj <= endLeave) simulatedLabel = "휴직";
+    }
+
+    const end = (simulatedStatus === "퇴사") ? new Date(emp.leaveDate) : dateObj;
+    const diff = (end - joinDateObj) / (1000 * 60 * 60 * 24 * 365.25);
+    const simulatedTenure = Math.max(0, Math.round(diff * 10) / 10);
+    const computedDays = cleanWorkingDays(emp.workingDaysRaw);
+
+    let disabledGrade = "비장애";
+    const disabledText = (emp.disabledRaw || "").toString().trim();
+    if (disabledText === "중증장애") {
+      disabledGrade = "중증";
+    } else if (disabledText === "경증장애") {
+      disabledGrade = "경증";
+    }
+
+    const normalizedContract = normalizeContractType(emp.contractType);
+
+    parsedEmployees.push({
+      ...emp,
+      rawContractType: emp.contractType,
+      contractType:    normalizedContract,
+      status:          simulatedStatus,
+      statusLabel:     simulatedLabel,
+      tenure:          simulatedTenure,
+      workingDaysCount: computedDays,
+      disabledGrade:   disabledGrade
+    });
+  });
+
+  const active  = parsedEmployees.filter(e => e.status === "재직");
+  const resigned = parsedEmployees.filter(e => e.status === "퇴사");
+  const ajungActive = active.filter(e => e.corp === "아정네트웍스");
+
+  const baseLawCount = ajungActive.filter(e =>
+    e.workingDaysCount >= 16 && e.workingHours >= 60
+  ).length;
+
+  const mandatoryCount = Math.floor(baseLawCount * 0.031);
+
+  let currentScore = 0;
+  ajungActive.forEach(e => {
+    if (e.disabledGrade === "경증") {
+      if (e.workingDaysCount >= 16 && e.workingHours >= 60) currentScore += 1;
+    } else if (e.disabledGrade === "중증") {
+      if (e.workingHours >= 60) {
+        currentScore += 2;
+      } else {
+        currentScore += 1;
+      }
+    }
+  });
+
+  const summary = {
+    total:            parsedEmployees.length,
+    active:           active.length,
+    onDuty:           active.filter(e => e.statusLabel !== "휴직").length,
+    onLeave:          active.filter(e => e.statusLabel === "휴직").length,
+    resigned:         resigned.length,
+    byGroup:          groupCount(active, "jobGroup"),
+    byContract:       groupCount(active, "contractType"),
+    byCorp:           groupCount(active, "corp"),
+    byLocation:       groupCount(active, "workLocation"),
+    avgTenure:        avg(active.map(e => e.tenure)),
+    hiredThisYear:    parsedEmployees.filter(e => e.joinDate && e.joinDate.substring(0,4) === yearStr).length,
+    resignedThisYear: resigned.filter(e => e.leaveDate && e.leaveDate.substring(0,4) === yearStr).length,
+    dlCorpTotalActive: ajungActive.length,
+    dlBaseCount:      baseLawCount,
+    dlMandatory:      mandatoryCount,
+    dlCurrentScore:   currentScore
+  };
+
+  return { summary, employees: parsedEmployees };
+}
+
+function cleanWorkingDays(text) {
+  if (!text) return 21.7;
+  const t = text.toString().replace(/\s+/g, '');
+  if (t.includes("주6일") || t.includes("주6회")) return 26.0;
+  if (t.includes("주5일") || t.includes("주5회") || t.includes("스케줄근무")) return 21.7;
+  if (t.includes("주4일") || t.includes("주4회")) return 17.4;
+  if (t.includes("주3일") || t.includes("주3회")) return 13.0;
+  if (t.includes("주2일") || t.includes("주2회")) return 8.7;
+  if (!isNaN(t) && t !== "") return Number(t);
+  return 21.7;
+}
+
+// =============================================
+// 패널 전환
+// =============================================
+function showPanel(id) {
+  currentPanelId = id;
+  try {
+    document.querySelectorAll(".panel").forEach(p => p.style.display = "none");
+    document.querySelectorAll(".nav-item").forEach(n => n.classList.remove("active"));
+    const panelEl = document.getElementById("panel-" + id);
+    if (panelEl) panelEl.style.display = "block";
+
+    if (id === "disabledLaw") {
+      document.getElementById("header-date-box").style.display = "none";
+      document.getElementById("header-year-box").style.display = "flex";
+      if (!monthlySimulatedCache.year) processMonthlyData();
+    } else {
+      document.getElementById("header-date-box").style.display = "flex";
+      document.getElementById("header-year-box").style.display = "none";
+    }
+
+    const map = ["workforce","headcount","compare","hiring","resign","org","disabledLaw"];
+    const idx = map.indexOf(id);
+    if (idx !== -1) document.querySelectorAll(".nav-item")[idx]?.classList.add("active");
+
+    const titles = { workforce:"인력현황", headcount:"상시근로자수", compare:"상시근로자수 (전월 대비)", hiring:"채용현황", resign:"퇴사자현황", org:"부서/직군별", disabledLaw:"♿ 아정네트웍스 장애인 의무고용 현황" };
+    document.getElementById("panel-title").textContent = titles[id] || id;
+    updateHeaderSubtitle();
+
+    if (!simulatedData) return;
+    if (id === "workforce")    renderWorkforce();
+    if (id === "headcount")    renderHeadcount();
+    if (id === "compare")      renderCompare();
+    if (id === "hiring")       renderHiring();
+    if (id === "resign")       renderResign();
+    if (id === "org")          renderOrg();
+    if (id === "disabledLaw")  renderDisabledLaw();
+  } catch(err) {
+    const ev = document.getElementById("error-view");
+    ev.style.display = "block";
+    ev.innerHTML = `<div class="error-box">⚠️ 화면 렌더링 중 오류 발생<code>${err.stack || err.message}</code></div>`;
+  }
+}
+
+function populateFilters() {
+  if (!simulatedData) return;
+  const groupSel = document.getElementById("wf-group");
+  const prevGroup = groupSel.value;
+  groupSel.innerHTML = '<option value="">전체 직군</option>';
+  [...new Set(simulatedData.employees.map(e => e.jobGroup).filter(g => g && g.trim()))].sort().forEach(g => {
+    const o = document.createElement("option"); o.value = g; o.textContent = g;
+    if (g === prevGroup) o.selected = true;
+    groupSel.appendChild(o);
+  });
+  const contSel = document.getElementById("wf-contract");
+  const prevCont = contSel.value;
+  contSel.innerHTML = '<option value="">고용형태</option>';
+  ["정규직","계약직","기타근로"].forEach(c => {
+    const o = document.createElement("option"); o.value = c; o.textContent = c;
+    if (c === prevCont) o.selected = true;
+    contSel.appendChild(o);
+  });
+}
+
+// =============================================
+// ① 인력현황
+// =============================================
+function renderWorkforce() {
+  if (!simulatedData) return;
+  const q      = document.getElementById("wf-search").value.toLowerCase();
+  const group  = document.getElementById("wf-group").value;
+  const status = document.getElementById("wf-status").value;
+  const cont   = document.getElementById("wf-contract").value;
+  const list = simulatedData.employees.filter(e => {
+    if (status === "재직" && e.status !== "재직") return false;
+    if (status === "퇴사" && e.status !== "퇴사") return false;
+    if (group && e.jobGroup !== group) return false;
+    if (cont  && e.contractType !== cont) return false;
+    if (q && !String(e.name).toLowerCase().includes(q) && !String(e.empCode).toLowerCase().includes(q)) return false;
+    return true;
+  });
+  const active = simulatedData.employees.filter(e => e.status === "재직");
+  const s = simulatedData.summary;
+  document.getElementById("wf-metrics").innerHTML = `
+    <div class="metric"><div class="metric-label">해당시점 재직자</div><div class="metric-val">${active.length}<span>명</span></div><div class="metric-sub">누적 가용 ${s.total}명</div></div>
+    <div class="metric"><div class="metric-label">정규/계약</div><div class="metric-val">${countBy(active,"contractType","정규직")}<span>명</span></div><div class="metric-sub">계약직 ${countBy(active,"contractType","계약직")}명 (기타 ${countBy(active,"contractType","기타근로")}명)</div></div>
+    <div class="metric"><div class="metric-label">평균 근속</div><div class="metric-val">${s.avgTenure}<span>년</span></div></div>
+    <div class="metric"><div class="metric-label">당해 연도 입사</div><div class="metric-val">${s.hiredThisYear}<span>명</span></div><div class="metric-sub">${getYearStr()}년도 기준</div></div>
+    <div class="metric"><div class="metric-label">휴직인원</div><div class="metric-val">${s.onLeave}<span>명</span></div></div>
+  `;
+  const totalResults = list.length;
+  const totalPages = Math.max(1, Math.ceil(totalResults / PAGE_SIZE));
+  if (wfPage > totalPages) wfPage = totalPages;
+  const paged = list.slice((wfPage-1)*PAGE_SIZE, wfPage*PAGE_SIZE);
+  document.getElementById("wf-count").textContent = `결과 ${totalResults}명`;
+  document.getElementById("wf-tbody").innerHTML = paged.map(e => {
+    let badgeCls = "badge-active";
+    if (e.statusLabel === "휴직") badgeCls = "badge-leave";
+    if (e.statusLabel === "퇴직예정") badgeCls = "badge-planned";
+    if (e.status === "퇴사") badgeCls = "badge-resign";
+    let typeCls = "badge-etc";
+    if (e.contractType === "정규직") typeCls = "badge-reg";
+    if (e.contractType === "계약직") typeCls = "badge-con";
+    return `<tr>
+      <td class="emp-id">${e.empCode||"-"}</td>
+      <td class="name-cell">${e.name||"-"}</td>
+      <td>${e.corp||"-"}</td>
+      <td>${e.jobGroup||"-"}</td>
+      <td>${e.jobRaw||"-"}</td>
+      <td><strong>${e.rawContractType||"-"}</strong></td>
+      <td><span class="badge ${typeCls}">${e.contractType}</span></td>
+      <td>${e.joinDate||"-"}</td>
+      <td>${e.tenure}년</td>
+      <td><span class="badge ${badgeCls}">${e.statusLabel}</span></td>
+    </tr>`;
+  }).join("");
+  document.getElementById("wf-pager").innerHTML = `
+    <button onclick="wfPage--;renderWorkforce()" ${wfPage<=1?"disabled":""}>◀</button>
+    <span class="pager-info">${wfPage} / ${totalPages}</span>
+    <button onclick="wfPage++;renderWorkforce()" ${wfPage>=totalPages?"disabled":""}>▶</button>
+    <span style="color:var(--text-hint);font-size:11px;margin-left:6px;">총 ${totalResults}명</span>
+  `;
+}
+
+// =============================================
+// ② 상시근로자수
+// =============================================
+function renderHeadcount() {
+  const active = simulatedData.employees.filter(e => e.status === "재직");
+  const s = simulatedData.summary;
+  document.getElementById("hc-metrics").innerHTML = `
+    <div class="metric"><div class="metric-label">재직 인원</div><div class="metric-val">${s.active}<span>명</span></div></div>
+    <div class="metric"><div class="metric-label">누적 퇴사자</div><div class="metric-val">${s.resigned}<span>명</span></div></div>
+    <div class="metric"><div class="metric-label">당해 연도 입사</div><div class="metric-val">${s.hiredThisYear}<span>명</span></div></div>
+    <div class="metric"><div class="metric-label">당해 연도 퇴사</div><div class="metric-val">${s.resignedThisYear}<span>명</span></div><div class="metric-sub">${getYearStr()}년 기준</div></div>
+    <div class="metric"><div class="metric-label">휴직중</div><div class="metric-val">${s.onLeave}<span>명</span></div></div>
+  `;
+  renderBars("hc-contract-bars", s.byContract, "#6366f1");
+  renderBars("hc-corp-bars", s.byCorp, "#0ea5e9");
+  renderBars("hc-location-bars", s.byLocation, "#f59e0b");
+  const onLeave = active.filter(e => e.statusLabel === "휴직");
+  document.getElementById("hc-leave-tbody").innerHTML = onLeave.length
+    ? onLeave.map(e => `<tr>
+        <td class="emp-id">${e.empCode}</td><td class="name-cell">${e.name}</td>
+        <td>${e.jobGroup||"-"}</td>
+        <td><span class="badge badge-leave">${e.leaveType||"휴직"}</span></td>
+        <td>${e.leaveStart||"-"}</td><td>${e.leaveEnd||"-"}</td>
+      </tr>`).join("")
+    : `<tr><td colspan="6" style="text-align:center;color:var(--text-hint);padding:20px;">해당일 기준 휴직자 없음</td></tr>`;
+}
+
+// =============================================
+// ⑦ 상시근로자수(전월 대비) - ★ 3분할 및 증감율 처리 완료
+// =============================================
+function renderCompare() {
+  const targetStr = document.getElementById("target-date-input").value;
+  if (!targetStr) return;
+
+  // 1. 시점 계산
+  const currDate = new Date(targetStr);
+  const currYear = currDate.getFullYear();
+  const currMonth = currDate.getMonth() + 1;
+  const currMonthStr = `${currYear}-${String(currMonth).padStart(2, '0')}`;
+
+  const prevDate = new Date(currDate.getFullYear(), currDate.getMonth() - 1, 1);
+  const prevYear = prevDate.getFullYear();
+  const prevMonth = prevDate.getMonth() + 1;
+  const prevMonthStr = `${prevYear}-${String(prevMonth).padStart(2, '0')}`;
+
+  const prevMonthLastDay = new Date(currDate.getFullYear(), currDate.getMonth(), 0);
+  const prevSnapshot = calculateSnapshot(prevMonthLastDay, prevMonthStr, String(prevYear));
+
+  // 2. 타이틀 텍스트 반영
+  document.getElementById("compare-prev-title").innerHTML = `<span>⬅️ 전월 현황</span> <strong>${prevYear}년 ${prevMonth}월 말 기준</strong>`;
+  document.getElementById("compare-curr-title").innerHTML = `<span>현재월 현황 ➡️</span> <strong>${currYear}년 ${currMonth}월 기준</strong>`;
+
+  // 3. 전월/당월 변수 추출
+  const pActive = prevSnapshot.employees.filter(e => e.status === "재직").length;
+  const pHired  = prevSnapshot.employees.filter(e => e.joinDate && e.joinDate.substring(0, 7) === prevMonthStr).length;
+  const pResigned = prevSnapshot.employees.filter(e => e.status === "퇴사" && e.leaveDate && e.leaveDate.substring(0, 7) === prevMonthStr).length;
+  const pLeave  = prevSnapshot.employees.filter(e => e.status === "재직" && e.statusLabel === "휴직").length;
+
+  const cActive = simulatedData.employees.filter(e => e.status === "재직").length;
+  const cHired  = simulatedData.employees.filter(e => e.joinDate && e.joinDate.substring(0, 7) === currMonthStr).length;
+  const cResigned = simulatedData.employees.filter(e => e.status === "퇴사" && e.leaveDate && e.leaveDate.substring(0, 7) === currMonthStr).length;
+  const cLeave  = simulatedData.employees.filter(e => e.status === "재직" && e.statusLabel === "휴직").length;
+
+  // 4. 왼쪽 분할 (전월) 구조 주입
+  document.getElementById("compare-prev-metrics").innerHTML = `
+    <div class="metric" style="margin-bottom:10px;"><div class="metric-label">전월 재직 인원</div><div class="metric-val" style="color:#4b5563;">${pActive}<span>명</span></div></div>
+    <div class="metric" style="margin-bottom:10px;"><div class="metric-label">전월 입사자 (${prevMonth}월)</div><div class="metric-val" style="color:var(--success);">${pHired}<span>명</span></div></div>
+    <div class="metric" style="margin-bottom:10px;"><div class="metric-label">전월 퇴사자 (${prevMonth}월)</div><div class="metric-val" style="color:var(--danger);">${pResigned}<span>명</span></div></div>
+    <div class="metric" style="margin-bottom:10px;"><div class="metric-label">전월 휴직자 시점</div><div class="metric-val" style="color:var(--warning);">${pLeave}<span>명</span></div></div>
+  `;
+
+  // 5. 중앙 분할 (당월) 구조 주입
+  document.getElementById("compare-curr-metrics").innerHTML = `
+    <div class="metric" style="margin-bottom:10px;"><div class="metric-label">현재월 재직 인원</div><div class="metric-val" style="color:var(--accent);">${cActive}<span>명</span></div></div>
+    <div class="metric" style="margin-bottom:10px;"><div class="metric-label">현재월 입사자 (${currMonth}월)</div><div class="metric-val" style="color:var(--success);">${cHired}<span>명</span></div></div>
+    <div class="metric" style="margin-bottom:10px;"><div class="metric-label">현재월 퇴사자 (${currMonth}월)</div><div class="metric-val" style="color:var(--danger);">${cResigned}<span>명</span></div></div>
+    <div class="metric" style="margin-bottom:10px;"><div class="metric-label">현재월 휴직자 시점</div><div class="metric-val" style="color:var(--warning);">${cLeave}<span>명</span></div></div>
+  `;
+
+  // 6. 우측 분할 (증감 분석 컴포넌트 함수)
+  function makeGapHtml(label, prevVal, currVal) {
+    const diff = currVal - prevVal;
+    let textClass = "color: var(--text);";
+    let sign = "";
+    
+    if (diff > 0) { textClass = "color: var(--danger); font-weight: 600;"; sign = "▲ +"; }
+    else if (diff < 0) { textClass = "color: #2563eb; font-weight: 600;"; sign = "▼ "; }
+
+    // 증감율 계산 로직 (전월이 0인 경우 고려한 예외 안전처리 포함)
+    let rateStr = "0%";
+    if (prevVal > 0) {
+      const rate = Math.round((diff / prevVal) * 1000) / 10;
+      rateStr = (rate > 0 ? "+" : "") + rate + "%";
+    } else if (prevVal === 0 && diff > 0) {
+      rateStr = "신규 반영";
+    }
+
+    return `
+      <div class="metric" style="margin-bottom:10px;">
+        <div class="metric-label">${label}</div>
+        <div class="metric-val" style="${textClass}">${sign}${diff}<span>명</span></div>
+        <div class="metric-sub" style="font-weight: 500;">변동율: ${rateStr}</div>
+      </div>`;
+  }
+
+  // 우측 분할 화면에 증감 메트릭 주입
+  document.getElementById("compare-gap-metrics").innerHTML = `
+    convertHtmlGap
+    ${makeGapHtml("재직 인원 변동", pActive, cActive)}
+    ${makeGapHtml("입사자 추이 변동", pHired, cHired)}
+    ${makeGapHtml("퇴사자 추이 변동", pResigned, cResigned)}
+    ${makeGapHtml("휴직자 시점 변동", pLeave, cLeave)}
+  `;
+}
+
+// =============================================
+// ③ 채용현황 (당월 카운트 반영)
+// =============================================
+function renderHiring() {
+  const targetDateStr = document.getElementById("target-date-input").value;
+  const targetYear = getYearStr();
+  const targetMonthStr = targetDateStr ? targetDateStr.substring(0, 7) : ""; 
+  const displayMonth = targetDateStr ? parseInt(targetDateStr.substring(5, 7)) : "";
+
+  const hired = simulatedData.employees.filter(e => e.joinDate && String(e.joinDate).substring(0,4) === targetYear);
+  const hiredThisMonth = simulatedData.employees.filter(e => e.joinDate && String(e.joinDate).substring(0,7) === targetMonthStr);
+
+  document.getElementById("hi-metrics").innerHTML = `
+    <div class="metric" style="border-color: var(--accent); background: var(--accent-light);"><div class="metric-label" style="color: var(--accent); font-weight:600;">${displayMonth}월 당월 채용</div><div class="metric-val" style="color: var(--accent);">${hiredThisMonth.length}<span>명</span></div><div class="metric-sub">${targetMonthStr} 기준</div></div>
+    <div class="metric"><div class="metric-label">${targetYear}년 채용 인원</div><div class="metric-val">${hired.length}<span>명</span></div></div>
+    <div class="metric"><div class="metric-label">정규직 입사</div><div class="metric-val">${hired.filter(e=>e.contractType==="정규직").length}<span>명</span></div></div>
+    <div class="metric"><div class="metric-label">계약직 입사</div><div class="metric-val">${hired.filter(e=>e.contractType==="계약직").length}<span>명</span></div></div>
+    <div class="metric"><div class="metric-label">모집 직군수</div><div class="metric-val">${new Set(hired.map(e=>e.jobGroup).filter(Boolean)).size}<span>개</span></div></div>
+  `;
+  document.getElementById("hi-tbody").innerHTML = hired.length
+    ? hired.sort((a,b)=>String(b.joinDate).localeCompare(String(a.joinDate))).map(e => {
+        let typeCls = e.contractType==="정규직"?"badge-reg":e.contractType==="계약직"?"badge-con":"badge-etc";
+        return `<tr>
+          <td class="emp-id">${e.empCode}</td><td class="name-cell">${e.name}</td>
+          <td>${e.corp||"-"}</td><td>${e.jobGroup||"-"}</td><td>${e.jobRaw||"-"}</td>
+          <td><span class="badge ${typeCls}">${e.contractType}</span></td>
+          <td>${e.joinDate}</td>
+        </tr>`;
+      }).join("")
+    : `<tr><td colspan="7" style="text-align:center;color:var(--text-hint);padding:20px;">${targetYear}년도 입사 데이터 없음</td></tr>`;
+  const gc = {};
+  hired.forEach(e => { if(e.jobGroup) gc[e.jobGroup] = (gc[e.jobGroup]||0)+1; });
+  renderBars("hi-group-bars", gc, "#22c55e");
+}
+
+// =============================================
+// ④ 퇴사자현황 (당월 카운트 반영)
+// =============================================
+function renderResign() {
+  const targetDateStr = document.getElementById("target-date-input").value;
+  const targetYear = getYearStr();
+  const targetMonthStr = targetDateStr ? targetDateStr.substring(0, 7) : "";
+  const displayMonth = targetDateStr ? parseInt(targetDateStr.substring(5, 7)) : "";
+
+  const filtered = simulatedData.employees.filter(e => e.status === "퇴사" && e.leaveDate && String(e.leaveDate).substring(0,4) === targetYear);
+  const resignedThisMonth = simulatedData.employees.filter(e => e.status === "퇴사" && e.leaveDate && String(e.leaveDate).substring(0,7) === targetMonthStr);
+
+  const totalCount = simulatedData.employees.length;
+  const turnover = totalCount ? Math.round((filtered.length / totalCount) * 1000) / 10 : 0;
+
+  document.getElementById("re-metrics").innerHTML = `
+    <div class="metric" style="border-color: var(--danger); background: #fef2f2;"><div class="metric-label" style="color: var(--danger); font-weight:600;">${displayMonth}월 당월 퇴사</div><div class="metric-val" style="color: var(--danger);">${resignedThisMonth.length}<span>명</span></div><div class="metric-sub">${targetMonthStr} 기준</div></div>
+    <div class="metric"><div class="metric-label">${targetYear}년 퇴사 인원</div><div class="metric-val">${filtered.length}<span>명</span></div></div>
+    <div class="metric"><div class="metric-label">연간 이직률</div><div class="metric-val">${turnover}<span>%</span></div></div>
+    <div class="metric"><div class="metric-label">평균 재직기간</div><div class="metric-val">${avg(filtered.map(e=>e.tenure))}<span>년</span></div></div>
+    <div class="metric"><div class="metric-label">누적 퇴사</div><div class="metric-val">${simulatedData.employees.filter(e=>e.status==="퇴사").length}<span>명</span></div></div>
+  `;
+  document.getElementById("re-year-label").textContent = targetYear + "년";
+  document.getElementById("re-tbody").innerHTML = filtered.length
+    ? filtered.sort((a,b)=>String(b.leaveDate).localeCompare(String(a.leaveDate))).map(e => {
+        let typeCls = e.contractType==="정규직"?"badge-reg":e.contractType==="계약직"?"badge-con":"badge-etc";
+        return `<tr>
+          <td class="emp-id">${e.empCode}</td><td class="name-cell">${e.name}</td>
+          <td>${e.jobGroup||"-"}</td><td>${e.jobRaw||"-"}</td>
+          <td><span class="badge ${typeCls}">${e.contractType}</span></td>
+          <td>${e.joinDate||"-"}</td><td>${e.leaveDate||"-"}</td>
+          <td>${e.tenure}년</td><td>${e.leaveReason||"-"}</td>
+        </tr>`;
+      }).join("")
+    : `<tr><td colspan="9" style="text-align:center;color:var(--text-hint);padding:20px;">${targetYear}년 퇴사 데이터 없음</td></tr>`;
+  const gc = {}, rc = {};
+  filtered.forEach(e => {
+    if(e.jobGroup) gc[e.jobGroup] = (gc[e.jobGroup]||0)+1;
+    const r = e.leaveReason || "미기재"; rc[r] = (rc[r]||0)+1;
+  });
+  renderBars("re-group-bars", gc, "#ef4444");
+  renderBars("re-reason-bars", rc, "#f59e0b");
+}
+
+// =============================================
+// ⑤ 부서/직군별
+// =============================================
+function renderOrg() {
+  const active = simulatedData.employees.filter(e => e.status === "재직");
+  const s = simulatedData.summary;
+  const groups = [...new Set(active.map(e => e.jobGroup).filter(g => g && g.trim()))].sort();
+  const deptCount = {};
+  active.forEach(e => { if(e.dept && e.dept.trim()) deptCount[e.dept] = (deptCount[e.dept]||0)+1; });
+  document.getElementById("org-metrics").innerHTML = `
+    <div class="metric"><div class="metric-label">가동 직군수</div><div class="metric-val">${groups.length}<span>개</span></div></div>
+    <div class="metric"><div class="metric-label">최대 조직원 직군</div><div class="metric-val" style="font-size:14px;padding-top:4px;">${topKey(s.byGroup)}</div></div>
+    <div class="metric"><div class="metric-label">활성 부서수</div><div class="metric-val">${Object.keys(deptCount).length}<span>개</span></div></div>
+    <div class="metric"><div class="metric-label">소속 법인수</div><div class="metric-val">${new Set(active.map(e=>e.corp).filter(Boolean)).size}<span>개</span></div></div>
+  `;
+  renderBars("org-group-bars", s.byGroup, "#6366f1");
+  const top10 = Object.fromEntries(Object.entries(deptCount).sort((a,b)=>b[1]-a[1]).slice(0,10));
+  renderBars("org-dept-bars", top10, "#14b8a6");
+  const contracts = ["정규직","계약직","기타근로"];
+  let html = `<table><thead><tr><th>직군</th>${contracts.map(c=>`<th style="text-align:center;">${c}</th>`).join("")}<th style="text-align:center;font-weight:500;">합계</th></tr></thead><tbody>`;
+  let colTotals = {};
+  groups.forEach(g => {
+    const row = active.filter(e=>e.jobGroup===g);
+    html += `<tr><td>${g}</td>`;
+    contracts.forEach(c => {
+      const n = row.filter(e=>e.contractType===c).length;
+      colTotals[c] = (colTotals[c]||0)+n;
+      html += `<td style="text-align:center;">${n||"-"}</td>`;
+    });
+    html += `<td style="text-align:center;font-weight:500;">${row.length}</td></tr>`;
+  });
+  html += `<tr style="border-top:0.5px solid var(--border-strong)"><td style="font-weight:500;">합계</td>`;
+  contracts.forEach(c => { html += `<td style="text-align:center;font-weight:500;">${colTotals[c]||0}</td>`; });
+  html += `<td style="text-align:center;font-weight:500;">${active.length}</td></tr></tbody></table>`;
+  document.getElementById("org-matrix").innerHTML = html;
+}
+
+// =============================================
+// ⑥ 장애인고용
+// =============================================
+function renderDisabledLaw() {
+  const cache = monthlySimulatedCache;
+  if (!cache.list) return;
+  const netShortfall = cache.avgMandatory - cache.avgScore;
+  const summaryText = netShortfall > 0 ? `연평균 ${Math.round(netShortfall*10)/10}명 미달 (부담금 대상)` : "의무 기준 충족 완료";
+  const fontColor = netShortfall > 0 ? "var(--danger)" : "var(--success)";
+  document.getElementById("dl-metrics").innerHTML = `
+    <div class="metric"><div class="metric-label">${cache.year}년 아정 연평균 상시근로자</div><div class="metric-val">${cache.avgBase}<span>명</span></div><div class="metric-sub">타 법인 소속 제외</div></div>
+    <div class="metric"><div class="metric-label">연간 최종 의무고용인원</div><div class="metric-val" style="color:var(--warning);">${cache.avgMandatory}<span>명</span></div><div class="metric-sub">평균 모수 기준 3.1% 절사</div></div>
+    <div class="metric"><div class="metric-label">아정 연평균 고용인원(현재)</div><div class="metric-val" style="color:var(--accent);">${cache.avgScore}<span>명</span></div><div class="metric-sub">중증 60h↑ 2명, 미만 1명</div></div>
+    <div class="metric"><div class="metric-label">${cache.year}년 최종 준수 상태</div><div class="metric-val" style="font-size:14px;color:${fontColor};padding-top:6px;font-weight:600;">${summaryText}</div></div>
+  `;
+  document.getElementById("dl-monthly-tbody").innerHTML = cache.list.map(m => {
+    const diff = m.dlMandatory - m.dlCurrentScore;
+    const isPass = diff <= 0;
+    return `<tr>
+      <td style="font-weight:600;background:var(--accent-light);color:var(--accent);">${m.monthLabel}</td>
+      <td>${m.totalActive}명</td>
+      <td style="font-weight:600;">${m.dlBaseCount}명</td>
+      <td style="font-weight:600;color:var(--warning);">${m.dlMandatory}명</td>
+      <td style="font-weight:600;color:var(--accent);">${m.dlCurrentScore}명</td>
+      <td><span class="badge ${isPass?'badge-active':'badge-resign'}">${isPass?'준수':`${diff}명 미달`}</span></td>
+    </tr>`;
+  }).join("");
+  document.getElementById("panel-sub").textContent = `${cache.year}년도 1월~12월 아정네트웍스 역산 레포트 구성 완료`;
+}
+
+// =============================================
+// 유틸 함수
+// =============================================
+function getYearStr() {
+  if (currentPanelId === "disabledLaw") return document.getElementById("target-year-select").value || new Date().getFullYear().toString();
+  const v = document.getElementById("target-date-input").value;
+  return v ? v.substring(0,4) : new Date().getFullYear().toString();
+}
+function groupCount(arr, key) {
+  return arr.reduce((acc, item) => { const k = item[key]||"정규직/계약직"; acc[k]=(acc[k]||0)+1; return acc; }, {});
+}
+function renderBars(elId, obj, baseColor) {
+  const el = document.getElementById(elId);
+  if (!el) return;
+  const entries = Object.entries(obj||{}).filter(([k,v])=>k&&k!=="null"&&k!=="undefined"&&k.trim()!=="").sort((a,b)=>b[1]-a[1]);
+  if (!entries.length) { el.innerHTML = `<div style="color:var(--text-hint);font-size:12px;padding:12px 0;">데이터 없음</div>`; return; }
+  const max = Math.max(...entries.map(e=>e[1]), 1);
+  el.innerHTML = entries.map(([k,v],i) => `
+    <div class="bar-row">
+      <div class="bar-label" title="${k}">${k}</div>
+      <div class="bar-bg"><div class="bar-fill" style="width:${Math.max(5,Math.round(v/max*100))}%;background:${GROUP_COLORS[i%GROUP_COLORS.length]};">${v}</div></div>
+      <div class="bar-count">${v}명</div>
+    </div>`).join("");
+}
+function countBy(arr, key, val) { return arr.filter(e=>e[key]===val).length; }
+function topKey(obj) {
+  const e = Object.entries(obj||{}).filter(([k])=>k&&k!=="정규직/계약직").sort((a,b)=>b[1]-a[1]);
+  return e[0] ? `${e[0][0]} (${e[0][1]}명)` : "-";
+}
+function avg(nums) {
+  const v = nums.filter(n=>n!==null&&n!==undefined&&!isNaN(n)&&n>=0);
+  if (!v.length) return 0;
+  return Math.round(v.reduce((a,b)=>a+b,0)/v.length*10)/10;
+}
+function now() { return new Date().toLocaleTimeString("ko-KR",{hour:"2-digit",minute:"2-digit"}); }
+
+loadData();
+</script>
+</body>
+</html>
