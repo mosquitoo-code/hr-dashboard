@@ -81,7 +81,6 @@
   .pager button:disabled { opacity: .4; cursor: default; }
   .pager-info { color: var(--text-muted); }
 
-  /* 전월대비 스플릿 베너 전용 스타일 */
   .compare-title-banner { font-size: 13px; font-weight: 600; padding: 10px 14px; border-radius: var(--radius-sm); margin-bottom: 12px; display: flex; justify-content: space-between; align-items: center; }
   .bg-prev { background: #f3f4f6; color: #4b5563; border-left: 4px solid #9ca3af; }
   .bg-curr { background: var(--accent-light); color: var(--accent); border-left: 4px solid var(--accent); }
@@ -111,6 +110,10 @@
         <div class="page-sub" id="panel-sub">로딩 중...</div>
       </div>
       <div class="header-controls">
+        <div class="target-date-box" id="compare-corp-box" style="display:none;">
+          🏢 법인 필터:
+          <select id="compare-corp-select" onchange="renderCompare()"><option value="">전체 법인</option></select>
+        </div>
         <div class="target-date-box" id="header-date-box">
           📅 조회 기준일:
           <input type="date" id="target-date-input" onchange="onTargetDateChange()" />
@@ -493,10 +496,16 @@ function showPanel(id) {
     if (id === "disabledLaw") {
       document.getElementById("header-date-box").style.display = "none";
       document.getElementById("header-year-box").style.display = "flex";
+      document.getElementById("compare-corp-box").style.display = "none";
       if (!monthlySimulatedCache.year) processMonthlyData();
+    } else if (id === "compare") {
+      document.getElementById("header-date-box").style.display = "flex";
+      document.getElementById("header-year-box").style.display = "none";
+      document.getElementById("compare-corp-box").style.display = "flex"; // 전월비교 패널일 때 필터 노출
     } else {
       document.getElementById("header-date-box").style.display = "flex";
       document.getElementById("header-year-box").style.display = "none";
+      document.getElementById("compare-corp-box").style.display = "none";
     }
 
     const map = ["workforce","headcount","compare","hiring","resign","org","disabledLaw"];
@@ -539,6 +548,16 @@ function populateFilters() {
     const o = document.createElement("option"); o.value = c; o.textContent = c;
     if (c === prevCont) o.selected = true;
     contSel.appendChild(o);
+  });
+
+  // 상시근로자수(전월 대비) 전용 법인 필터 셀렉트박스 채우기 (추가됨)
+  const compareCorpSel = document.getElementById("compare-corp-select");
+  const prevCompareCorp = compareCorpSel.value;
+  compareCorpSel.innerHTML = '<option value="">전체 법인</option>';
+  [...new Set(rawEmployees.map(e => e.corp).filter(c => c && c.trim()))].sort().forEach(c => {
+    const o = document.createElement("option"); o.value = c; o.textContent = c;
+    if (c === prevCompareCorp) o.selected = true;
+    compareCorpSel.appendChild(o);
   });
 }
 
@@ -630,11 +649,14 @@ function renderHeadcount() {
 }
 
 // =============================================
-// ⑦ 상시근로자수(전월 대비) - ★ 3분할 및 증감율 처리 완료
+// ⑦ 상시근로자수(전월 대비) - ★ 법인 필터 필터링 로직 추가 완료
 // =============================================
 function renderCompare() {
   const targetStr = document.getElementById("target-date-input").value;
   if (!targetStr) return;
+
+  // 선택된 법인 필터값 가져오기
+  const selectedCorp = document.getElementById("compare-corp-select").value;
 
   // 1. 시점 계산
   const currDate = new Date(targetStr);
@@ -650,22 +672,32 @@ function renderCompare() {
   const prevMonthLastDay = new Date(currDate.getFullYear(), currDate.getMonth(), 0);
   const prevSnapshot = calculateSnapshot(prevMonthLastDay, prevMonthStr, String(prevYear));
 
-  // 2. 타이틀 텍스트 반영
-  document.getElementById("compare-prev-title").innerHTML = `<span>⬅️ 전월 현황</span> <strong>${prevYear}년 ${prevMonth}월 말 기준</strong>`;
-  document.getElementById("compare-curr-title").innerHTML = `<span>현재월 현황 ➡️</span> <strong>${currYear}년 ${currMonth}월 기준</strong>`;
+  // 2. 타이틀 텍스트 반영 (법인 선택 시 문구 추가)
+  const corpTitleSub = selectedCorp ? ` [${selectedCorp}]` : " [전체법인]";
+  document.getElementById("compare-prev-title").innerHTML = `<span>⬅️ 전월 현황${corpTitleSub}</span> <strong>${prevYear}년 ${prevMonth}월 말 기준</strong>`;
+  document.getElementById("compare-curr-title").innerHTML = `<span>현재월 현황${corpTitleSub} ➡️</span> <strong>${currYear}년 ${currMonth}월 기준</strong>`;
 
-  // 3. 전월/당월 변수 추출
-  const pActive = prevSnapshot.employees.filter(e => e.status === "재직").length;
-  const pHired  = prevSnapshot.employees.filter(e => e.joinDate && e.joinDate.substring(0, 7) === prevMonthStr).length;
-  const pResigned = prevSnapshot.employees.filter(e => e.status === "퇴사" && e.leaveDate && e.leaveDate.substring(0, 7) === prevMonthStr).length;
-  const pLeave  = prevSnapshot.employees.filter(e => e.status === "재직" && e.statusLabel === "휴직").length;
+  // 3. 전월/당월 리스트에서 법인 필터 먼저 거르기
+  let prevEmpList = prevSnapshot.employees;
+  let currEmpList = simulatedData.employees;
 
-  const cActive = simulatedData.employees.filter(e => e.status === "재직").length;
-  const cHired  = simulatedData.employees.filter(e => e.joinDate && e.joinDate.substring(0, 7) === currMonthStr).length;
-  const cResigned = simulatedData.employees.filter(e => e.status === "퇴사" && e.leaveDate && e.leaveDate.substring(0, 7) === currMonthStr).length;
-  const cLeave  = simulatedData.employees.filter(e => e.status === "재직" && e.statusLabel === "휴직").length;
+  if (selectedCorp) {
+    prevEmpList = prevEmpList.filter(e => e.corp === selectedCorp);
+    currEmpList = currEmpList.filter(e => e.corp === selectedCorp);
+  }
 
-  // 4. 왼쪽 분할 (전월) 구조 주입
+  // 4. 필터링된 리스트 기반으로 인원 추출
+  const pActive = prevEmpList.filter(e => e.status === "재직").length;
+  const pHired  = prevEmpList.filter(e => e.joinDate && e.joinDate.substring(0, 7) === prevMonthStr).length;
+  const pResigned = prevEmpList.filter(e => e.status === "퇴사" && e.leaveDate && e.leaveDate.substring(0, 7) === prevMonthStr).length;
+  const pLeave  = prevEmpList.filter(e => e.status === "재직" && e.statusLabel === "휴직").length;
+
+  const cActive = currEmpList.filter(e => e.status === "재직").length;
+  const cHired  = currEmpList.filter(e => e.joinDate && e.joinDate.substring(0, 7) === currMonthStr).length;
+  const cResigned = currEmpList.filter(e => e.status === "퇴사" && e.leaveDate && e.leaveDate.substring(0, 7) === currMonthStr).length;
+  const cLeave  = currEmpList.filter(e => e.status === "재직" && e.statusLabel === "휴직").length;
+
+  // 5. 왼쪽 분할 (전월) 구조 주입
   document.getElementById("compare-prev-metrics").innerHTML = `
     <div class="metric" style="margin-bottom:10px;"><div class="metric-label">전월 재직 인원</div><div class="metric-val" style="color:#4b5563;">${pActive}<span>명</span></div></div>
     <div class="metric" style="margin-bottom:10px;"><div class="metric-label">전월 입사자 (${prevMonth}월)</div><div class="metric-val" style="color:var(--success);">${pHired}<span>명</span></div></div>
@@ -673,7 +705,7 @@ function renderCompare() {
     <div class="metric" style="margin-bottom:10px;"><div class="metric-label">전월 휴직자 시점</div><div class="metric-val" style="color:var(--warning);">${pLeave}<span>명</span></div></div>
   `;
 
-  // 5. 중앙 분할 (당월) 구조 주입
+  // 6. 중앙 분할 (당월) 구조 주입
   document.getElementById("compare-curr-metrics").innerHTML = `
     <div class="metric" style="margin-bottom:10px;"><div class="metric-label">현재월 재직 인원</div><div class="metric-val" style="color:var(--accent);">${cActive}<span>명</span></div></div>
     <div class="metric" style="margin-bottom:10px;"><div class="metric-label">현재월 입사자 (${currMonth}월)</div><div class="metric-val" style="color:var(--success);">${cHired}<span>명</span></div></div>
@@ -681,7 +713,7 @@ function renderCompare() {
     <div class="metric" style="margin-bottom:10px;"><div class="metric-label">현재월 휴직자 시점</div><div class="metric-val" style="color:var(--warning);">${cLeave}<span>명</span></div></div>
   `;
 
-  // 6. 우측 분할 (증감 분석 컴포넌트 함수)
+  // 7. 우측 분할 (증감 분석) 컴포넌트 호출용 헬퍼
   function makeGapHtml(label, prevVal, currVal) {
     const diff = currVal - prevVal;
     let textClass = "color: var(--text);";
@@ -690,7 +722,6 @@ function renderCompare() {
     if (diff > 0) { textClass = "color: var(--danger); font-weight: 600;"; sign = "▲ +"; }
     else if (diff < 0) { textClass = "color: #2563eb; font-weight: 600;"; sign = "▼ "; }
 
-    // 증감율 계산 로직 (전월이 0인 경우 고려한 예외 안전처리 포함)
     let rateStr = "0%";
     if (prevVal > 0) {
       const rate = Math.round((diff / prevVal) * 1000) / 10;
@@ -707,9 +738,7 @@ function renderCompare() {
       </div>`;
   }
 
-  // 우측 분할 화면에 증감 메트릭 주입
   document.getElementById("compare-gap-metrics").innerHTML = `
-    convertHtmlGap
     ${makeGapHtml("재직 인원 변동", pActive, cActive)}
     ${makeGapHtml("입사자 추이 변동", pHired, cHired)}
     ${makeGapHtml("퇴사자 추이 변동", pResigned, cResigned)}
@@ -889,7 +918,7 @@ function renderBars(elId, obj, baseColor) {
 }
 function countBy(arr, key, val) { return arr.filter(e=>e[key]===val).length; }
 function topKey(obj) {
-  const e = Object.entries(obj||{}).filter(([k])=>k&&k!=="정규직/계약직").sort((a,b)=>b[1]-a[1]);
+  const e = Object.entries(obj||{}).filter(([k])=>k&&k!=="미분류").sort((a,b)=>b[1]-a[1]);
   return e[0] ? `${e[0][0]} (${e[0][1]}명)` : "-";
 }
 function avg(nums) {
